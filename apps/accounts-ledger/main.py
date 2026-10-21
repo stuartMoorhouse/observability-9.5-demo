@@ -13,7 +13,9 @@ from pathlib import Path
 
 import psycopg
 from psycopg.conninfo import make_conninfo
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
@@ -120,6 +122,22 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="accounts-ledger", lifespan=lifespan)
+_reinit_lock = threading.Lock()
+
+
+def _reinit_db() -> None:
+    # Serialised so a burst of failing requests runs init_db once at a time (it is idempotent).
+    with _reinit_lock:
+        init_db(max_wait_s=30)
+
+
+@app.exception_handler(psycopg.errors.UndefinedTable)
+async def undefined_table(_request: Request, exc: psycopg.errors.UndefinedTable):
+    # Postgres keeps its data in an emptyDir, so a Postgres pod restart drops the schema
+    # while this service keeps running. Recreate it and fail this request; retries succeed.
+    log.error("Schema missing (%s); re-initialising database", str(exc).splitlines()[0])
+    await run_in_threadpool(_reinit_db)
+    return JSONResponse(status_code=503, content={"detail": "database schema re-initialised; retry"})
 
 
 class Posting(BaseModel):

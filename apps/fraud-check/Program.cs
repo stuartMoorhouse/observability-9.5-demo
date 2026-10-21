@@ -103,7 +103,7 @@ public class FaultConfig(string faultDir)
 {
     private readonly string _file = Path.Combine(faultDir, "ERROR_RATE");
     private int _cached;
-    private long _lastRead = long.MinValue;
+    private long _lastRead = -1;
     private readonly object _lock = new();
 
     public int ErrorRate()
@@ -111,7 +111,7 @@ public class FaultConfig(string faultDir)
         var now = Environment.TickCount64;
         lock (_lock)
         {
-            if (now - _lastRead > 5000)
+            if (_lastRead < 0 || now - _lastRead > 5000)
             {
                 _cached = Read();
                 _lastRead = now;
