@@ -1,6 +1,6 @@
 locals {
-  apps_dir  = abspath("${path.module}/../../apps")
-  chart_dir = abspath("${path.module}/../../charts/demo-app")
+  apps_dir  = abspath("${path.module}/../../../apps")
+  chart_dir = abspath("${path.module}/../../../charts/demo-app")
   namespace = "banking"
 
   services = toset(["web-banking", "transfer-service", "fraud-check", "accounts-ledger", "fx-rates"])
@@ -15,7 +15,10 @@ locals {
     ])), 0, 12)
   }
 
-  image_tag = { for svc in local.services : svc => "${var.app_version}-${local.source_hash[svc]}" }
+  # Architecture in the tag: tags are immutable and the ECR skip check is per tag,
+  # so switching platform must produce a new tag rather than reuse the old image.
+  arch      = split("/", var.image_platform)[1]
+  image_tag = { for svc in local.services : svc => "${var.app_version}-${local.source_hash[svc]}-${local.arch}" }
   registry  = split("/", aws_ecr_repository.app["web-banking"].repository_url)[0]
 }
 
@@ -135,6 +138,7 @@ resource "helm_release" "demo_app" {
 
   wait    = true
   timeout = 900
+  replace = true # reuse the name if a previous install failed (e.g. timed out) and was left behind
 
   values = [yamlencode({
     instrumentationRef = var.instrumentation_ref
@@ -143,12 +147,22 @@ resource "helm_release" "demo_app" {
       rate = var.loadgen_rate
     }
     services = {
-      for svc in setsubtract(local.services, ["fx-rates"]) : svc => {
-        image = {
-          repository = aws_ecr_repository.app[svc].repository_url
-          tag        = local.image_tag[svc]
-        }
-      }
+      for svc in setsubtract(local.services, ["fx-rates"]) : svc => merge(
+        {
+          image = {
+            repository = aws_ecr_repository.app[svc].repository_url
+            tag        = local.image_tag[svc]
+          }
+        },
+        # The operator only knows the x64 .NET runtimes and points CORECLR_PROFILER_PATH
+        # at linux-x64. It keeps a value the pod already sets, so set the path for the
+        # node architecture here (the instrumentation image ships linux-arm64 too).
+        svc == "fraud-check" ? {
+          env = {
+            CORECLR_PROFILER_PATH = "/otel-auto-instrumentation-dotnet/linux-${local.arch == "arm64" ? "arm64" : "x64"}/OpenTelemetry.AutoInstrumentation.Native.so"
+          }
+        } : {}
+      )
     }
   })]
 

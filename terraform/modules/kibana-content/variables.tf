@@ -82,3 +82,9 @@ variable "ml_bucket_span" {
   type        = string
   default     = "5m"
 }
+
+variable "traces_ready" {
+  description = "Any value known only once the demo app is deployed. The ML datafeed starts after it: OTel fields such as service.name are mapped dynamically on the first trace document, and a datafeed cannot start while its fields are unmapped."
+  type        = string
+  default     = ""
+}

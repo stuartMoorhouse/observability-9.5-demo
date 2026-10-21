@@ -3,8 +3,8 @@
 FROM python:3.12.15-slim-bookworm AS build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN python -m venv /opt/venv
-COPY requirements.txt .
-RUN /opt/venv/bin/pip install -r requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+RUN /opt/venv/bin/pip install -r /tmp/requirements.txt
 
 FROM python:3.12.15-slim-bookworm
 RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --no-create-home app

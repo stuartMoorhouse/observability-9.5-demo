@@ -56,9 +56,14 @@ variable "image_build_tool" {
 }
 
 variable "image_platform" {
-  description = "Target platform for demo images (EKS nodes are x86_64)"
+  description = "Target platform for demo images; also selects the EKS node architecture (linux/arm64 = Graviton, linux/amd64 = x86_64)"
   type        = string
-  default     = "linux/amd64"
+  default     = "linux/arm64"
+
+  validation {
+    condition     = contains(["linux/arm64", "linux/amd64"], var.image_platform)
+    error_message = "image_platform must be linux/arm64 or linux/amd64."
+  }
 }
 
 variable "loadgen_rate" {

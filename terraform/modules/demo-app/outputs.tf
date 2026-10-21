@@ -13,3 +13,8 @@ output "fx_rates_image" {
   value       = "${aws_ecr_repository.app["fx-rates"].repository_url}:${local.image_tag["fx-rates"]}"
   depends_on  = [null_resource.image]
 }
+
+output "release_revision" {
+  description = "Helm revision of the demo app; known only once the release is deployed and pods are ready (wait = true)"
+  value       = helm_release.demo_app.metadata.revision
+}

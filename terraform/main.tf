@@ -44,7 +44,7 @@ provider "aws" {
   region  = var.aws_region
   profile = var.aws_profile
 
-  # expires_at / owner / purpose flow to every AWS resource from local.auto.tfvars.
+  # Org tags (division, org, team, project, keep-until) flow to every AWS resource from local.auto.tfvars.
   default_tags {
     tags = var.tags
   }
@@ -121,6 +121,8 @@ module "eks" {
   aws_region         = var.aws_region
   aws_profile        = var.aws_profile
   kubernetes_version = var.kubernetes_version
+  node_architecture  = split("/", var.image_platform)[1] # nodes follow the image platform
+  tags               = var.tags
 
   cluster_endpoint_public_access_cidrs = local.eks_api_allowed_cidrs
 }
@@ -155,7 +157,8 @@ module "kibana_content" {
   elastic_password       = module.elastic_cloud.elasticsearch_password
   alert_email_recipients = var.alert_email_recipients
   environment            = "banking-demo"
-  dashboards_dir         = "${path.root}/dashboards"
+  dashboards_dir         = "${path.root}/../dashboards"
+  traces_ready           = tostring(module.demo_app.release_revision)
 }
 
 module "demo_app" {

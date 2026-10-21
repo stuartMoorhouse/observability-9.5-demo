@@ -21,6 +21,7 @@ _OBS_DEMO_LIB_LOADED=1
 # ---------------------------------------------------------------------------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="${REPO_ROOT}/scripts"
+TF_DIR="${REPO_ROOT}/terraform"
 ENV_FILE="${REPO_ROOT}/shared/env.json"
 RESULTS_DIR="${REPO_ROOT}/results"
 
@@ -102,11 +103,11 @@ load_tf_outputs() {
   [[ -n "${TF_OUTPUTS_JSON}" ]] && return 0
   require_cmd terraform jq
   local out
-  if ! out="$(terraform -chdir="${REPO_ROOT}" output -json 2>&1)"; then
-    die "terraform output failed in ${REPO_ROOT}: ${out}"
+  if ! out="$(terraform -chdir="${TF_DIR}" output -json 2>&1)"; then
+    die "terraform output failed in ${TF_DIR}: ${out}"
   fi
   if [[ -z "${out}" || "${out}" == "{}" ]]; then
-    die "No Terraform outputs found in ${REPO_ROOT}. Run 'terraform init' and 'terraform apply' first."
+    die "No Terraform outputs found in ${TF_DIR}. Run 'terraform init' and 'terraform apply' first."
   fi
   TF_OUTPUTS_JSON="${out}"
 }

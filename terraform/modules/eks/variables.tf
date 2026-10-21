@@ -19,10 +19,27 @@ variable "kubernetes_version" {
   default     = "1.34"
 }
 
+variable "tags" {
+  description = "Tags for EC2 instances, volumes and ENIs launched by the node group (same as the provider default_tags)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "node_architecture" {
+  description = "Worker node CPU architecture: arm64 (Graviton) or amd64 (x86_64). Must match the image platform."
+  type        = string
+  default     = "arm64"
+
+  validation {
+    condition     = contains(["arm64", "amd64"], var.node_architecture)
+    error_message = "node_architecture must be arm64 or amd64."
+  }
+}
+
 variable "node_instance_types" {
-  description = "Instance types for the spot managed node group (x86_64). Several types improve spot availability."
+  description = "Instance types for the spot managed node group. null = pick by node_architecture. Several types improve spot availability."
   type        = list(string)
-  default     = ["m6i.large", "m7i.large", "m5.large"]
+  default     = null
 }
 
 variable "node_desired_size" {

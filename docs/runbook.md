@@ -10,7 +10,8 @@ Application path: `web-banking` (Node.js) -> `transfer-service` (Java) ->
 (Python) is onboarded live in scenario 1. Environment: `banking-demo`.
 
 All scripts run from the repo root and read endpoints and credentials from
-`terraform output`.
+`terraform output` in `terraform/`. Run the `terraform` commands below from
+`terraform/` (or add `-chdir=terraform`).
 
 ## Before the meeting (T-60 min)
 
@@ -130,7 +131,7 @@ Keep the fault from scenario 2 running.
 | 4 | **AI off:** switch to the `demo-viewer` browser profile. Show the same alert, service map, correlations, trace waterfall and logs. Point out there is no AI Assistant button and Agent Builder is not in the navigation. | "Everything we used for root cause in scenario 2 is core functionality. AI is an accelerator, not a dependency." |
 | 5 | Explain the control: Stack Management > Roles > `demo-viewer` (Observability read, no AI Assistant / Agent Builder privileges) vs `demo-sre`. Both roles and users are created by Terraform. | "Access to AI is a role privilege. It can follow your approval process: team by team, space by space, or off entirely." |
 
-Optional: show the role definitions in `modules/kibana-content` to make the
+Optional: show the role definitions in `terraform/modules/kibana-content` to make the
 point that the restriction is code-reviewed.
 
 ---
@@ -220,7 +221,7 @@ scripts/validate.sh            # optional record of the final state
 terraform destroy
 ```
 
-Check the `expires_at` tag value in `local.auto.tfvars` and destroy before
+Check the `keep-until` tag value in `terraform/local.auto.tfvars` and destroy before
 that date. See README.md, Teardown.
 
 ## Troubleshooting
@@ -228,7 +229,7 @@ that date. See README.md, Teardown.
 | Symptom | Check |
 |---|---|
 | Scripts fail with "unreachable" | VPN/network, deployment running in the Elastic Cloud console, `terraform output kibana_url` |
-| kubectl / terraform times out reaching the EKS API | The API only allows the IP you applied from. If your IP changed (new network, VPN), run `terraform apply` again, or set `eks_api_allowed_cidrs` in `local.auto.tfvars` |
+| kubectl / terraform times out reaching the EKS API | The API only allows the IP you applied from. If your IP changed (new network, VPN), run `terraform apply` again, or set `eks_api_allowed_cidrs` in `terraform/local.auto.tfvars` |
 | kubectl cannot reach `banking` | `aws eks update-kubeconfig --name $(terraform output -raw cluster_name) --region $(terraform output -raw aws_region) --profile $(terraform output -raw aws_profile)` |
 | No traces for a service | Pod has an `opentelemetry-auto-instrumentation-*` init container; `kubectl -n opentelemetry-operator-system get pods`; load generator running |
 | No new burn-rate alert | A previous alert is still active; wait for recovery or reset the SLO |
