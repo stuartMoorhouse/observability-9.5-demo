@@ -22,7 +22,7 @@ set -euo pipefail
 # shellcheck source=lib.sh source-path=SCRIPTDIR
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# Must match modules/kibana-content/dashboards.tf and scripts/export-dashboard.sh.
+# Must match terraform/modules/kibana-content/dashboards.tf and scripts/export-dashboard.sh.
 DASHBOARDS_API="/api/dashboards"
 
 RATE="${DEFAULT_LOAD_RATE}"

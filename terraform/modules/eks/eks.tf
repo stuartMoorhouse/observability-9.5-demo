@@ -64,9 +64,9 @@ module "eks" {
       name            = "${var.prefix}-spot"
       use_name_prefix = true
 
-      ami_type       = "AL2023_x86_64_STANDARD"
+      ami_type       = var.node_architecture == "arm64" ? "AL2023_ARM_64_STANDARD" : "AL2023_x86_64_STANDARD"
       capacity_type  = "SPOT"
-      instance_types = var.node_instance_types
+      instance_types = coalesce(var.node_instance_types, var.node_architecture == "arm64" ? ["m7g.large", "m6g.large", "m8g.large"] : ["m6i.large", "m7i.large", "m5.large"])
 
       min_size     = var.node_min_size
       max_size     = var.node_max_size
@@ -97,6 +97,11 @@ module "eks" {
       labels = {
         "capacity-type" = "spot"
       }
+
+      # provider default_tags do not reach launch template tag_specifications. The
+      # account denies ec2:RunInstances without the org tags on the request, so
+      # node launches fail unless the tags are set on the template explicitly.
+      launch_template_tags = var.tags
     }
   }
 

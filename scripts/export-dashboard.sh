@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # Kibana Dashboards API base path (GA in 9.5). MUST match the endpoint used in
-# modules/kibana-content/dashboards.tf.
+# terraform/modules/kibana-content/dashboards.tf.
 DASHBOARDS_API="/api/dashboards"
 
 # shellcheck source=lib.sh source-path=SCRIPTDIR

@@ -34,7 +34,8 @@ resource "elasticstack_elasticsearch_ml_anomaly_detection_job" "latency" {
   }
 
   data_description = {
-    time_field = "@timestamp"
+    time_field  = "@timestamp"
+    time_format = "epoch_ms" # ES default; set explicitly or the provider reports an inconsistent result
   }
 
   model_plot_config = {
@@ -74,9 +75,25 @@ resource "elasticstack_elasticsearch_ml_datafeed" "latency" {
   frequency   = "60s"
 }
 
+# A datafeed refuses to start while no index matches its pattern (allow_no_indices
+# does not help) or while a field it uses is unmapped. Traces, and the dynamic
+# mapping of OTel fields like service.name, only arrive once the demo app runs, so
+# the data stream is created up front and the start waits for var.traces_ready.
+resource "elasticstack_elasticsearch_data_stream" "traces" {
+  name = "traces-generic.otel-default"
+}
+
+resource "terraform_data" "traces_ready" {
+  input = var.traces_ready
+}
+
 resource "elasticstack_elasticsearch_ml_datafeed_state" "latency" {
   datafeed_id = elasticstack_elasticsearch_ml_datafeed.latency.datafeed_id
   state       = "started"
 
-  depends_on = [elasticstack_elasticsearch_ml_job_state.latency]
+  depends_on = [
+    elasticstack_elasticsearch_ml_job_state.latency,
+    elasticstack_elasticsearch_data_stream.traces,
+    terraform_data.traces_ready,
+  ]
 }

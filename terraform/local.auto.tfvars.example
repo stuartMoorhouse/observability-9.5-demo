@@ -3,10 +3,14 @@ aws_region                 = "eu-north-1"
 aws_profile                = "<your-aws-profile>"
 elastic_version            = "9.5.x"
 alert_email_recipients     = ["<you@example.com>"]
+# Organisation-mandated AWS tags. The account denies ec2:RunInstances without
+# division, org, project and team. Update keep-until for each deploy.
 tags = {
-  owner      = "<you>"
-  purpose    = "<purpose>"
-  expires_at = "<YYYY-MM-DD>"
+  division   = "field"
+  org        = "sa"
+  keep-until = "<YYYY-MM-DD>"
+  team       = "<your-team>"
+  project    = "<your-name>"
 }
 
 # Optional overrides (defaults shown)
@@ -14,6 +18,6 @@ tags = {
 # kubernetes_version       = "1.34"
 # kube_stack_chart_version = "0.16.0"
 # image_build_tool         = "docker"
-# image_platform           = "linux/amd64"
+# image_platform           = "linux/arm64"  # or linux/amd64; also sets the EKS node architecture
 # loadgen_rate             = 5
 # eks_api_allowed_cidrs    = []  # empty = your current public IP /32

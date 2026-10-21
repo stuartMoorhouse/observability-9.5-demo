@@ -50,8 +50,8 @@ The click path and talk track for each scenario are in
  +-------------------------------------------------------------------------------+
 ```
 
-Terraform layout: `main.tf`, `variables.tf`, `outputs.tf` at the repo root,
-modules under `modules/` (`eks`, `elastic-cloud`, `otel-k8s`, `demo-app`,
+Terraform layout: `main.tf`, `variables.tf`, `outputs.tf` under `terraform/`,
+modules under `terraform/modules/` (`eks`, `elastic-cloud`, `otel-k8s`, `demo-app`,
 `kibana-content`). Application source is under `apps/`, Helm charts under
 `charts/`, dashboards-as-code JSON under `dashboards/`, operational scripts
 under `scripts/`, measured results under `results/`.
@@ -65,7 +65,7 @@ under `scripts/`, measured results under `results/`.
 | Terraform >= 1.5 | |
 | kubectl | Kubeconfig is written by Terraform (`aws eks update-kubeconfig`). |
 | helm 3 | Used by `scripts/onboard-service.sh`. |
-| docker or podman with buildx | Images are built for `linux/amd64` and pushed to ECR. On Apple Silicon, buildx with QEMU emulation is required. |
+| docker or podman | Images are built for `linux/arm64` (Graviton nodes, native on Apple Silicon) and pushed to ECR. Set `image_platform = "linux/amd64"` for x86 nodes; that needs emulation on Apple Silicon. |
 | jq, curl | Used by all scripts. |
 | gitleaks (optional) | Secrets scan for `scripts/validate.sh` (criterion 13). |
 
@@ -76,9 +76,10 @@ k6 is not needed locally: the load generator runs in the cluster.
 1. Create your local variables file (gitignored):
 
    ```bash
+   cd terraform
    cp local.auto.tfvars.example local.auto.tfvars
    # edit: elastic_cloud_organization, aws_profile, elastic_version (exact 9.5.x patch),
-   #       alert_email_recipients, tags (owner, purpose, expires_at)
+   #       alert_email_recipients, tags (division, org, team, project, keep-until)
    ```
 
 2. Export credentials:
@@ -88,7 +89,7 @@ k6 is not needed locally: the load generator runs in the cluster.
    aws sts get-caller-identity --profile <your-aws-profile>
    ```
 
-3. Provision:
+3. Provision (from `terraform/`):
 
    ```bash
    terraform init
@@ -99,7 +100,7 @@ k6 is not needed locally: the load generator runs in the cluster.
 
    Expect roughly 30-40 minutes end to end: EKS cluster and node group
    (~15 min), Elastic Cloud deployment (~5 min), image builds and pushes
-   (~5-10 min, longer under emulation), Helm releases and Kibana content.
+   (~5 min; longer for linux/amd64 on Apple Silicon), Helm releases and Kibana content.
 
    **Elastic Cloud timeout handling.** The `ec_deployment` resource can take
    4-5 minutes and Terraform may time out before it finishes. If that
@@ -174,7 +175,7 @@ scripts/reset-demo.sh      # optional: removes the out-of-band fx-rates Helm rel
 terraform destroy
 ```
 
-- Every AWS resource carries the `expires_at` tag from `local.auto.tfvars`.
+- Every AWS resource carries the org tags (including `keep-until`) from `terraform/local.auto.tfvars`.
   Check it against the calendar and destroy before that date; nothing deletes
   resources automatically.
 - The VPC has a destroy-time cleanup step for security groups and network
@@ -182,7 +183,7 @@ terraform destroy
   destroy still fails with `DependencyViolation`, wait a few minutes and run
   `terraform destroy` again.
 - After destroy, confirm no tagged resources remain:
-  `aws resourcegroupstaggingapi get-resources --tag-filters Key=expires_at --profile <your-aws-profile> --region eu-north-1`.
+  `aws resourcegroupstaggingapi get-resources --tag-filters Key=keep-until --profile <your-aws-profile> --region <aws_region>`.
 
 ## Repository hygiene
 

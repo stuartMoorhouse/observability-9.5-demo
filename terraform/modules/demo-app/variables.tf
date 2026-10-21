@@ -25,9 +25,9 @@ variable "image_build_tool" {
 }
 
 variable "image_platform" {
-  description = "Target platform for image builds (EKS nodes are x86_64)"
+  description = "Target platform for image builds (must match the EKS node architecture)"
   type        = string
-  default     = "linux/amd64"
+  default     = "linux/arm64"
 }
 
 variable "app_version" {

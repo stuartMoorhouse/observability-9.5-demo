@@ -116,7 +116,7 @@ alert_since() {
 }
 
 pinned_version() {
-  local f="${REPO_ROOT}/local.auto.tfvars"
+  local f="${TF_DIR}/local.auto.tfvars"
   [[ -f "${f}" ]] || return 0
   sed -n 's/^[[:space:]]*elastic_version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "${f}" | head -n1
 }
@@ -523,7 +523,7 @@ check_13() {
   (cd "${REPO_ROOT}" && git ls-files -z -co --exclude-standard | tar --null -T - -cf -) | tar -xf - -C "${tree}"
   details+=("$(find "${tree}" -type f | wc -l | tr -d ' ') committed/committable files scanned")
 
-  if (cd "${REPO_ROOT}" && git ls-files --error-unmatch local.auto.tfvars >/dev/null 2>&1); then
+  if (cd "${REPO_ROOT}" && git ls-files --error-unmatch terraform/local.auto.tfvars >/dev/null 2>&1); then
     problems+=("local.auto.tfvars is tracked by git")
   fi
 
@@ -546,13 +546,18 @@ check_13() {
   fi
 
   # Personal values from local.auto.tfvars must not appear in committed files.
-  local tfvars="${REPO_ROOT}/local.auto.tfvars" values=() v hits
+  # Only identifying keys are checked; region, versions, build options and the
+  # org-wide tags (division, org, team, keep-until) are shared, not personal.
+  local tfvars="${TF_DIR}/local.auto.tfvars" values=() v hits
+  local personal_keys='elastic_cloud_organization|aws_profile|alert_email_recipients|owner|project'
   if [[ -f "${tfvars}" ]]; then
     while IFS= read -r v; do
-      [[ ${#v} -ge 4 && "${v}" != "<"* && "${v}" != "eu-north-1" && ! "${v}" =~ ^[0-9.x]+$ ]] && values+=("${v}")
-    done < <(grep -Eo '"[^"]+"' "${tfvars}" | tr -d '"' | grep -Ev '^(owner|purpose|expires_at|true|false)$' | sort -u)
+      [[ ${#v} -ge 4 && "${v}" != "<"* ]] && values+=("${v}")
+    done < <(sed -E 's/[[:space:]]*#.*$//' "${tfvars}" |
+      grep -E "^[[:space:]]*(${personal_keys})[[:space:]]*=" |
+      grep -Eo '"[^"]+"' | tr -d '"' | sort -u)
     for v in "${values[@]}"; do
-      hits="$(grep -rIlF -- "${v}" "${tree}" 2>/dev/null | sed "s|${tree}/||" | grep -v '^local.auto.tfvars.example$' || true)"
+      hits="$(grep -rIlF -- "${v}" "${tree}" 2>/dev/null | sed "s|${tree}/||" | grep -v '^terraform/local.auto.tfvars.example$' || true)"
       [[ -z "${hits}" ]] || problems+=("a personal value from local.auto.tfvars appears in: $(tr '\n' ' ' <<<"${hits}")")
     done
     details+=("${#values[@]} personal values from local.auto.tfvars checked")
@@ -573,7 +578,7 @@ check_13() {
 }
 
 check_14() {
-  skip "run after 'terraform destroy': it must finish without a VPC DependencyViolation; then confirm no tagged resources remain (aws resourcegroupstaggingapi get-resources --tag-filters Key=expires_at)"
+  skip "run after 'terraform destroy': it must finish without a VPC DependencyViolation; then confirm no tagged resources remain (aws resourcegroupstaggingapi get-resources --tag-filters Key=keep-until)"
 }
 
 # ---------------------------------------------------------------------------

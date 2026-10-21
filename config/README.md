@@ -2,18 +2,18 @@
 
 The configuration files and definitions that the `otel-k8s` and `kibana-content` modules deploy. Everything is applied by `terraform apply`. None of these files contain credentials.
 
-## Collection (modules/otel-k8s)
+## Collection (terraform/modules/otel-k8s)
 
 | File / resource | Purpose | Target |
 |---|---|---|
-| `modules/otel-k8s/values.yaml` | Elastic's kube-stack values for direct Elasticsearch ingestion, copied unchanged from `elastic/elastic-agent` tag `v9.5.5` (`deploy/helm/edot-collector/kube-stack/values.yaml`). It defines the EDOT daemon and gateway collectors, the OTel Operator (auto-generated webhook certs, no cert-manager) and the Instrumentation CR `elastic-instrumentation`. | Helm chart `open-telemetry/opentelemetry-kube-stack` `0.16.0`, release `opentelemetry-kube-stack` in `opentelemetry-operator-system` |
+| `terraform/modules/otel-k8s/values.yaml` | Elastic's kube-stack values for direct Elasticsearch ingestion, copied unchanged from `elastic/elastic-agent` tag `v9.5.5` (`deploy/helm/edot-collector/kube-stack/values.yaml`). It defines the EDOT daemon and gateway collectors, the OTel Operator (auto-generated webhook certs, no cert-manager) and the Instrumentation CR `elastic-instrumentation`. | Helm chart `open-telemetry/opentelemetry-kube-stack` `0.16.0`, release `opentelemetry-kube-stack` in `opentelemetry-operator-system` |
 | `helm_release.kube_stack` override | Sets `defaultCRConfig.image.tag` to `var.elastic_version`. | same |
 | `elasticstack_elasticsearch_security_api_key.otel` | Collector API key with `auto_configure` and `create_doc` on `logs-*`, `metrics-*` and `traces-*`, plus cluster `monitor`. | `POST /_security/api_key` |
 | `kubernetes_secret_v1.elastic` | Secret `elastic-secret-otel` with keys `elastic_endpoint` and `elastic_api_key`, read by the gateway collector. | K8s API |
 
 Data lands in the OTel-native data streams `traces-*.otel-*`, `logs-*.otel-*` and `metrics-*.otel-*`.
 
-## Kibana content (modules/kibana-content)
+## Kibana content (terraform/modules/kibana-content)
 
 | File / resource | Purpose | Target |
 |---|---|---|

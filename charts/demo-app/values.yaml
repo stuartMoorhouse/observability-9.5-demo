@@ -61,7 +61,8 @@ services:
     readinessPath: /healthz
     env:
       HOME: /tmp
-      DOTNET_EnableDiagnostics: "0"
+      # Do not set DOTNET_EnableDiagnostics=0: it also blocks the CLR profiler, and
+      # EDOT .NET auto-instrumentation then refuses to load (no traces).
       OTEL_DOTNET_AUTO_LOG_DIRECTORY: /tmp/otel-dotnet
     resources:
       requests: { cpu: 50m, memory: 128Mi }

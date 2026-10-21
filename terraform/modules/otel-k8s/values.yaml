@@ -1,7 +1,7 @@
 # Source: unmodified copy of Elastic's kube-stack values for direct Elasticsearch ingestion
 #   https://raw.githubusercontent.com/elastic/elastic-agent/refs/tags/v9.5.5/deploy/helm/edot-collector/kube-stack/values.yaml
 # Referenced by the "Using the elasticsearch exporter" section of the EDOT ECH Kubernetes quickstart.
-# Terraform (modules/otel-k8s/main.tf) overrides only defaultCRConfig.image.tag (= var.elastic_version)
+# Terraform (terraform/modules/otel-k8s/main.tf) overrides only defaultCRConfig.image.tag (= var.elastic_version)
 # via helm `set`; everything else is as published by Elastic. Re-copy from the matching tag on upgrade.
 #
 # For installation and configuration options, refer to the [installation instructions](https://www.elastic.co/docs/solutions/observability/get-started/opentelemetry/quickstart/ech/k8s#manual-installation)
