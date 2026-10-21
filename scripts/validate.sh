@@ -338,9 +338,9 @@ check_7() {
   fi
 }
 
-# Failure rate by service.version for a service since START (ES|QL).
+# Failure rate of server spans by service.version for a service since START (ES|QL).
 failure_by_version() {
-  esql_rows "FROM traces-*.otel-* | WHERE @timestamp >= TO_DATETIME(\"$2\") AND service.name == \"$1\"
+  esql_rows "FROM traces-*.otel-* | WHERE @timestamp >= TO_DATETIME(\"$2\") AND service.name == \"$1\" AND kind == \"Server\"
     | EVAL failed = CASE(status.code == \"Error\", 1, 0)
     | STATS total = COUNT(*), failures = SUM(failed) BY service.version
     | EVAL rate = TO_DOUBLE(failures) / total
@@ -352,18 +352,30 @@ check_8() {
     skip "opt-in: run with --scenarios (injects bad-version and errors faults)"
     return
   fi
-  local problems=() details=() start rows top
+  local problems=() details=() start rows base_rate bad_rate
   FAULTS_TOUCHED=true
 
-  # bad-version: the faulty service.version should have the highest failure rate.
-  start="$(utc_now)"
+  # bad-version: BAD_VERSION's failure rate should be well above BASE_VERSION's.
+  # Baseline is the FAULT_WAIT_MIN window before the fault. The fault window starts after
+  # fault-inject.sh has waited for the rollout, plus a grace period so spans from old pods
+  # still terminating are excluded.
+  start="$(jq -nr --argjson s $((FAULT_WAIT_MIN * 60)) 'now - $s | floor | todate')"
+  rows="$(failure_by_version transfer-service "${start}")"
+  base_rate="$(jq -r --arg v "${BASE_VERSION}" '[.[] | select(.["service.version"] == $v) | .rate][0] // 0 | . * 100 | floor' <<<"${rows}")"
   "${SCRIPTS_DIR}/fault-inject.sh" bad-version on >/dev/null 2>&1 || { fail "fault-inject.sh bad-version on failed"; return; }
+  sleep 30
+  start="$(utc_now)"
   info "Criterion 8: letting bad-version run for ${FAULT_WAIT_MIN} min..."
   sleep $((FAULT_WAIT_MIN * 60))
   rows="$(failure_by_version transfer-service "${start}")"
-  top="$(jq -r '.[0]["service.version"] // empty' <<<"${rows}")"
-  details+=("transfer-service failure rate by version: $(jq -r 'map("\(.["service.version"])=\((.rate // 0) * 100 | floor)%") | join(", ")' <<<"${rows}")")
-  [[ "${top}" == "${BAD_VERSION}" ]] || problems+=("top failing version is '${top:-none}', expected ${BAD_VERSION}")
+  bad_rate="$(jq -r --arg v "${BAD_VERSION}" '[.[] | select(.["service.version"] == $v) | .rate][0] // -1 | if . < 0 then -1 else . * 100 | floor end' <<<"${rows}")"
+  details+=("transfer-service server-span failure rate: ${BASE_VERSION}=${base_rate}% (before), ${BAD_VERSION}=${bad_rate}% (during fault)")
+  if ((bad_rate < 0)); then
+    problems+=("no ${BAD_VERSION} server spans during bad-version fault")
+  elif ((bad_rate < base_rate + 5)); then
+    # BAD_RELEASE fails ~15% of transfers (TransferController); 5 points leaves room for sampling noise.
+    problems+=("${BAD_VERSION} failure rate not at least 5 points above ${BASE_VERSION}")
+  fi
   "${SCRIPTS_DIR}/fault-inject.sh" bad-version off >/dev/null 2>&1 || problems+=("bad-version off failed")
 
   # errors: fraud-check failure rate should rise well above baseline.
