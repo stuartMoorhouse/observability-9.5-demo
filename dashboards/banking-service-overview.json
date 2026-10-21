@@ -1,0 +1,246 @@
+{
+  "id": "banking-service-overview",
+  "data": {
+    "title": "Banking demo - service overview",
+    "description": "Per-service throughput, p95 latency and error rate from OTel-native traces (traces-*.otel-*), deployment.environment banking-demo. Managed as code: changes made in the UI are overwritten on terraform apply.",
+    "tags": [
+      "banking-demo"
+    ],
+    "time_range": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh_interval": {
+      "pause": false,
+      "value": 30000
+    },
+    "panels": [
+      {
+        "type": "markdown",
+        "id": "overview-header",
+        "grid": {
+          "x": 0,
+          "y": 0,
+          "w": 48,
+          "h": 3
+        },
+        "config": {
+          "content": "## Banking demo - service overview\nService entry transactions (`processor.event: transaction`) for every service in `deployment.environment: banking-demo`. New services (for example `fx-rates`) appear automatically.",
+          "settings": {
+            "open_links_in_new_tab": true
+          }
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-transactions",
+        "grid": {
+          "x": 0,
+          "y": 3,
+          "w": 16,
+          "h": 6
+        },
+        "config": {
+          "type": "metric",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS transactions = COUNT(*)"
+          },
+          "metrics": [
+            {
+              "type": "primary",
+              "column": "transactions",
+              "label": "Transactions"
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-p95",
+        "grid": {
+          "x": 16,
+          "y": 3,
+          "w": 16,
+          "h": 6
+        },
+        "config": {
+          "type": "metric",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS p95_ms = ROUND(PERCENTILE(transaction.duration.us, 95) / 1000.0, 1)"
+          },
+          "metrics": [
+            {
+              "type": "primary",
+              "column": "p95_ms",
+              "label": "p95 latency (ms)"
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-error-rate",
+        "grid": {
+          "x": 32,
+          "y": 3,
+          "w": 16,
+          "h": 6
+        },
+        "config": {
+          "type": "metric",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS failures = SUM(CASE(event.outcome == \"failure\", 1, 0)), total = COUNT(*) | EVAL error_rate_pct = ROUND(100.0 * failures / total, 2) | KEEP error_rate_pct"
+          },
+          "metrics": [
+            {
+              "type": "primary",
+              "column": "error_rate_pct",
+              "label": "Error rate (%)"
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-throughput-by-service",
+        "grid": {
+          "x": 0,
+          "y": 9,
+          "w": 24,
+          "h": 12
+        },
+        "config": {
+          "type": "xy",
+          "layers": [
+            {
+              "type": "line",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS transactions = COUNT(*) BY bucket = BUCKET(@timestamp, 75, ?_tstart, ?_tend), service.name"
+              },
+              "x": {
+                "column": "bucket",
+                "label": "@timestamp"
+              },
+              "y": [
+                {
+                  "column": "transactions",
+                  "label": "Transactions"
+                }
+              ],
+              "breakdown_by": {
+                "column": "service.name"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-p95-by-service",
+        "grid": {
+          "x": 24,
+          "y": 9,
+          "w": 24,
+          "h": 12
+        },
+        "config": {
+          "type": "xy",
+          "layers": [
+            {
+              "type": "line",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS p95_ms = PERCENTILE(transaction.duration.us, 95) / 1000.0 BY bucket = BUCKET(@timestamp, 75, ?_tstart, ?_tend), service.name"
+              },
+              "x": {
+                "column": "bucket",
+                "label": "@timestamp"
+              },
+              "y": [
+                {
+                  "column": "p95_ms",
+                  "label": "p95 latency (ms)"
+                }
+              ],
+              "breakdown_by": {
+                "column": "service.name"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-error-rate-by-service",
+        "grid": {
+          "x": 0,
+          "y": 21,
+          "w": 24,
+          "h": 12
+        },
+        "config": {
+          "type": "xy",
+          "layers": [
+            {
+              "type": "line",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS failures = SUM(CASE(event.outcome == \"failure\", 1, 0)), total = COUNT(*) BY bucket = BUCKET(@timestamp, 75, ?_tstart, ?_tend), service.name | EVAL error_rate_pct = ROUND(100.0 * failures / total, 2) | KEEP bucket, service.name, error_rate_pct"
+              },
+              "x": {
+                "column": "bucket",
+                "label": "@timestamp"
+              },
+              "y": [
+                {
+                  "column": "error_rate_pct",
+                  "label": "Error rate (%)"
+                }
+              ],
+              "breakdown_by": {
+                "column": "service.name"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "overview-service-table",
+        "grid": {
+          "x": 24,
+          "y": 21,
+          "w": 24,
+          "h": 12
+        },
+        "config": {
+          "type": "data_table",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS transactions = COUNT(*), p95_ms = ROUND(PERCENTILE(transaction.duration.us, 95) / 1000.0, 1), failures = SUM(CASE(event.outcome == \"failure\", 1, 0)) BY service.name | EVAL error_rate_pct = ROUND(100.0 * failures / transactions, 2) | KEEP service.name, transactions, p95_ms, error_rate_pct | SORT service.name"
+          },
+          "rows": [
+            {
+              "column": "service.name"
+            }
+          ],
+          "metrics": [
+            {
+              "column": "transactions"
+            },
+            {
+              "column": "p95_ms"
+            },
+            {
+              "column": "error_rate_pct"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

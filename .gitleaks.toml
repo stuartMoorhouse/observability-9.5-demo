@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Exclude local-only artefacts that are gitignored but still scanned by `--no-git`"
+paths = [
+  '''.*\.tfstate$''',
+  '''.*\.tfstate\.backup$''',
+  '''.*\.tfplan$''',
+  '''.*\.pem$''',
+  '''(^|/)\.terraform/''',
+]

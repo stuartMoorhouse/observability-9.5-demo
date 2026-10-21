@@ -1,0 +1,150 @@
+{
+  "id": "banking-incident-triage",
+  "data": {
+    "title": "Banking demo - incident triage",
+    "description": "Error logs by service, exceptions by service.version, slow database spans and a service.version breakdown for the banking-demo environment (OTel-native logs-*.otel-* and traces-*.otel-*). Managed as code.",
+    "tags": ["banking-demo"],
+    "time_range": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "refresh_interval": {
+      "pause": false,
+      "value": 30000
+    },
+    "panels": [
+      {
+        "type": "markdown",
+        "id": "triage-header",
+        "grid": { "x": 0, "y": 0, "w": 48, "h": 3 },
+        "config": {
+          "content": "## Banking demo - incident triage\nStart with error logs and exceptions, then check `service.version` (bad release `2.0.0`) and slow database spans (`accounts-ledger` slow-db fault).",
+          "settings": { "open_links_in_new_tab": true }
+        }
+      },
+      {
+        "type": "vis",
+        "id": "triage-error-logs-by-service",
+        "grid": { "x": 0, "y": 3, "w": 24, "h": 12 },
+        "config": {
+          "type": "xy",
+          "layers": [
+            {
+              "type": "bar_stacked",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM logs-*.otel-* | WHERE deployment.environment == \"banking-demo\" AND severity_number >= 17 | STATS error_logs = COUNT(*) BY bucket = BUCKET(@timestamp, 60, ?_tstart, ?_tend), service.name"
+              },
+              "x": { "column": "bucket", "label": "@timestamp" },
+              "y": [ { "column": "error_logs", "label": "Error logs (severity >= ERROR)" } ],
+              "breakdown_by": { "column": "service.name" }
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "triage-exceptions-by-version",
+        "grid": { "x": 24, "y": 3, "w": 24, "h": 12 },
+        "config": {
+          "type": "data_table",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM logs-*.otel-* | WHERE deployment.environment == \"banking-demo\" AND exception.type IS NOT NULL | STATS occurrences = COUNT(*), last_seen = MAX(@timestamp) BY service.name, service.version, exception.type | SORT occurrences DESC | LIMIT 25"
+          },
+          "rows": [
+            { "column": "service.name" },
+            { "column": "service.version" },
+            { "column": "exception.type" }
+          ],
+          "metrics": [
+            { "column": "occurrences" },
+            { "column": "last_seen" }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "triage-version-breakdown",
+        "grid": { "x": 0, "y": 15, "w": 24, "h": 12 },
+        "config": {
+          "type": "data_table",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | STATS transactions = COUNT(*), p95_ms = ROUND(PERCENTILE(transaction.duration.us, 95) / 1000.0, 1), failures = SUM(CASE(event.outcome == \"failure\", 1, 0)) BY service.name, service.version | EVAL error_rate_pct = ROUND(100.0 * failures / transactions, 2) | KEEP service.name, service.version, transactions, p95_ms, error_rate_pct | SORT service.name, service.version"
+          },
+          "rows": [
+            { "column": "service.name" },
+            { "column": "service.version" }
+          ],
+          "metrics": [
+            { "column": "transactions" },
+            { "column": "p95_ms" },
+            { "column": "error_rate_pct" }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "triage-error-rate-by-version",
+        "grid": { "x": 24, "y": 15, "w": 24, "h": 12 },
+        "config": {
+          "type": "xy",
+          "layers": [
+            {
+              "type": "line",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM traces-*.otel-* | WHERE processor.event == \"transaction\" AND deployment.environment == \"banking-demo\" | EVAL service_version = CONCAT(service.name, \"@\", service.version) | STATS failures = SUM(CASE(event.outcome == \"failure\", 1, 0)), total = COUNT(*) BY bucket = BUCKET(@timestamp, 60, ?_tstart, ?_tend), service_version | EVAL error_rate_pct = ROUND(100.0 * failures / total, 2) | KEEP bucket, service_version, error_rate_pct"
+              },
+              "x": { "column": "bucket", "label": "@timestamp" },
+              "y": [ { "column": "error_rate_pct", "label": "Error rate (%)" } ],
+              "breakdown_by": { "column": "service_version", "label": "service@version" }
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "triage-slow-db-spans-over-time",
+        "grid": { "x": 0, "y": 27, "w": 24, "h": 12 },
+        "config": {
+          "type": "xy",
+          "layers": [
+            {
+              "type": "line",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM traces-*.otel-* | WHERE processor.event == \"span\" AND span.type == \"db\" AND deployment.environment == \"banking-demo\" | STATS p95_ms = PERCENTILE(span.duration.us, 95) / 1000.0 BY bucket = BUCKET(@timestamp, 60, ?_tstart, ?_tend), service.name"
+              },
+              "x": { "column": "bucket", "label": "@timestamp" },
+              "y": [ { "column": "p95_ms", "label": "DB span p95 (ms)" } ],
+              "breakdown_by": { "column": "service.name" }
+            }
+          ]
+        }
+      },
+      {
+        "type": "vis",
+        "id": "triage-slowest-db-spans",
+        "grid": { "x": 24, "y": 27, "w": 24, "h": 12 },
+        "config": {
+          "type": "data_table",
+          "data_source": {
+            "type": "esql",
+            "query": "FROM traces-*.otel-* | WHERE processor.event == \"span\" AND span.type == \"db\" AND deployment.environment == \"banking-demo\" | STATS spans = COUNT(*), p95_ms = ROUND(PERCENTILE(span.duration.us, 95) / 1000.0, 1), max_ms = ROUND(MAX(span.duration.us) / 1000.0, 1) BY service.name, span_name = name | SORT p95_ms DESC | LIMIT 20"
+          },
+          "rows": [
+            { "column": "service.name" },
+            { "column": "span_name" }
+          ],
+          "metrics": [
+            { "column": "spans" },
+            { "column": "p95_ms" },
+            { "column": "max_ms" }
+          ]
+        }
+      }
+    ]
+  }
+}
