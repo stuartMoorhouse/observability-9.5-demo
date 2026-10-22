@@ -87,18 +87,18 @@
   <span class="conn"><span class="dot" id="conn-dot"></span><span id="conn-text">Connecting...</span></span>
 </header>
 <nav role="tablist">
-  <button role="tab" aria-selected="true" data-tab="scenarios">Scenarios</button>
-  <button role="tab" aria-selected="false" data-tab="architecture">Demo architecture</button>
+  <button role="tab" aria-selected="true" data-tab="architecture">Demo architecture</button>
+  <button role="tab" aria-selected="false" data-tab="scenarios">Scenarios</button>
 </nav>
 
 <main>
-  <section class="tab" id="tab-scenarios">
+  <section class="tab" id="tab-scenarios" hidden>
     <div class="state" id="state"></div>
 
     <div class="grid">
       <div class="card">
         <h2><span class="num">1</span>Self-service onboarding</h2>
-        <p class="desc">Deploy fx-rates with only the OTel inject-python annotation. No Kibana changes.</p>
+        <p class="desc">Deploy a new service, fx-rates, with a single OpenTelemetry auto-instrumentation annotation. It appears in Elastic with no Kibana configuration.</p>
         <div class="row">
           <span class="label">fx-rates <small>charts/fx-rates</small></span>
           <span class="badge" id="b-fx"></span>
@@ -109,7 +109,7 @@
 
       <div class="card">
         <h2><span class="num">2-3</span>Incident to root cause</h2>
-        <p class="desc">Start about 5 min before you need the alert. bad-version for correlations, slow-db for the trace story.</p>
+        <p class="desc">Inject faults into the banking services and follow them from alert to root cause.</p>
         <div class="row">
           <span class="label">Bad release <small>transfer-service <span class="bad-v"></span></small></span>
           <span class="badge" id="b-bad"></span>
@@ -140,7 +140,7 @@
 
       <div class="card">
         <h2><span class="num">4</span>SLO burn-rate breach</h2>
-        <p class="desc">3000 ms on transfer-service: every transfer is a bad event. Start ~15 min ahead. For the measured detection delay, run scripts/slo-breach.sh instead.</p>
+        <p class="desc">Hold transfer-service latency at 3000 ms so every transfer counts against the latency SLO and its error budget burns.</p>
         <div class="row">
           <span class="label">Latency 3000 ms</span>
           <span class="badge" id="b-slo"></span>
@@ -159,7 +159,7 @@
           <button class="act" data-action="load-stop">Stop</button>
         </div>
         <div class="row">
-          <span class="label">Baseline <small>SLOs and dashboards: scripts/reset-demo.sh --full</small></span>
+          <span class="label">Baseline</span>
           <button class="act danger" data-action="reset" data-confirm="Reset the demo to baseline?">Reset demo</button>
         </div>
       </div>
@@ -171,7 +171,7 @@
     <ul id="log"></ul>
   </section>
 
-  <section class="tab" id="tab-architecture" hidden>
+  <section class="tab" id="tab-architecture">
     <div class="arch" id="arch"></div>
   </section>
 </main>
@@ -280,8 +280,7 @@ function renderArch() {
     box.replaceChildren(el("img", { src: cfg.architecture, alt: "Demo architecture" }));
   } else {
     box.replaceChildren(el("div", { className: "empty" },
-      el("strong", { textContent: "Demo architecture diagram coming soon" }),
-      "Add apps/demo-control-panel/static/architecture.png (or .svg) and run terraform apply."));
+      el("strong", { textContent: "Architecture diagram not available" })));
   }
 }
 

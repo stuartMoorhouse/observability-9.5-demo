@@ -3,8 +3,8 @@ image:
   tag: latest
 imagePullPolicy: IfNotPresent
 
-# Source CIDRs allowed through the LoadBalancer. Required; there is no open default.
-allowedCidrs: []
+# Shared secret CloudFront sends as X-Origin-Verify. Required; Terraform generates it.
+originSecret: ""
 # Extra AWS tags for the load balancer as "k1=v1,k2=v2". Terraform passes the org tags.
 loadBalancerTags: ""
 

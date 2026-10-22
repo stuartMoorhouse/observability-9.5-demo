@@ -20,6 +20,6 @@ output "release_revision" {
 }
 
 output "control_panel_url" {
-  description = "demo-control-panel URL (load balancer DNS; allow 1-3 min after creation for DNS)"
-  value       = "http://${data.kubernetes_service_v1.demo_control_panel.status[0].load_balancer[0].ingress[0].hostname}"
+  description = "demo-control-panel HTTPS URL (CloudFront default certificate)"
+  value       = "https://${aws_cloudfront_distribution.control_panel.domain_name}"
 }

@@ -140,10 +140,17 @@ terraform -chdir=terraform output -raw control_panel_url
   load and fx-rates state, and links to Kibana.
 - **Demo architecture tab:** shows `apps/demo-control-panel/static/architecture.png`
   (or `.svg`) once that file exists. Add it and run `terraform apply` to rebuild the image.
-- **Access:** a Classic Load Balancer on HTTP port 80. Its security group only admits
-  `control_panel_allowed_cidrs`, which defaults to the public IP of the machine running
-  `terraform apply`. If you present from another network, re-apply there or set the CIDRs.
+- **Access:** HTTPS through a CloudFront distribution (`https://<id>.cloudfront.net`,
+  CloudFront's default certificate). AWS WAF on the distribution only admits
+  `control_panel_allowed_cidrs` (IPv4), which defaults to the public IP of the machine
+  running `terraform apply`. If you present from another network, re-apply there or set
+  the CIDRs. A first deploy takes about 5-15 minutes to propagate.
   There is no login, so the IP restriction is the only access control.
+- **Origin:** CloudFront forwards to a Classic Load Balancer on HTTP port 80. The load
+  balancer is open to the internet because CloudFront connects from its own IP ranges;
+  CloudFront adds an `X-Origin-Verify` header with a Terraform-generated secret, and the
+  app returns 403 to any request without it (except `/healthz`). The CloudFront-to-load
+  balancer leg is plain HTTP.
 - **Permissions:** a namespace-scoped Role. It can patch `fault-config`, annotate pods,
   patch `transfer-service` and `loadgen`, and create or delete the `fx-rates` objects.
 - **fx-rates:** onboarding applies the objects rendered from `charts/fx-rates` through the

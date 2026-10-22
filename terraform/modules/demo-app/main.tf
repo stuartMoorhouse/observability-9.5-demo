@@ -173,7 +173,9 @@ resource "helm_release" "demo_app" {
 
 # ---------------------------------------------------------------------------
 # demo-control-panel: presenter web page that triggers the scenarios in-cluster.
-# Exposed through a Classic Load Balancer restricted to var.control_panel_allowed_cidrs.
+# Served over HTTPS by CloudFront (AWS WAF admits only var.control_panel_allowed_cidrs).
+# The Classic Load Balancer behind it is open, so the app only answers requests
+# carrying the X-Origin-Verify secret that CloudFront adds.
 # ---------------------------------------------------------------------------
 
 # fx-rates objects rendered from the same chart scripts/onboard-service.sh installs,
@@ -211,7 +213,7 @@ resource "helm_release" "demo_control_panel" {
       repository = aws_ecr_repository.app["demo-control-panel"].repository_url
       tag        = local.image_tag["demo-control-panel"]
     }
-    allowedCidrs     = var.control_panel_allowed_cidrs
+    originSecret     = random_password.control_panel_origin.result
     loadBalancerTags = join(",", [for k, v in var.tags : "${k}=${v}"])
     kibanaUrl        = var.kibana_url
     baseVersion      = var.app_version
@@ -232,4 +234,111 @@ data "kubernetes_service_v1" "demo_control_panel" {
   }
 
   depends_on = [helm_release.demo_control_panel]
+}
+
+resource "random_password" "control_panel_origin" {
+  length  = 48
+  special = false
+}
+
+resource "aws_wafv2_ip_set" "control_panel" {
+  provider = aws.us_east_1
+
+  name               = "${var.prefix}-control-panel-allowed"
+  scope              = "CLOUDFRONT"
+  ip_address_version = "IPV4"
+  addresses          = var.control_panel_allowed_cidrs
+}
+
+resource "aws_wafv2_web_acl" "control_panel" {
+  provider = aws.us_east_1
+
+  name  = "${var.prefix}-control-panel"
+  scope = "CLOUDFRONT"
+
+  default_action {
+    block {}
+  }
+
+  rule {
+    name     = "allowed-cidrs"
+    priority = 0
+
+    action {
+      allow {}
+    }
+
+    statement {
+      ip_set_reference_statement {
+        arn = aws_wafv2_ip_set.control_panel.arn
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = false
+      metric_name                = "${var.prefix}-control-panel-allowed-cidrs"
+      sampled_requests_enabled   = false
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = false
+    metric_name                = "${var.prefix}-control-panel"
+    sampled_requests_enabled   = false
+  }
+}
+
+data "aws_cloudfront_cache_policy" "caching_disabled" {
+  name = "Managed-CachingDisabled"
+}
+
+# Forwards Content-Type (the app requires application/json on POST) and the query string.
+data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
+  name = "Managed-AllViewerExceptHostHeader"
+}
+
+resource "aws_cloudfront_distribution" "control_panel" {
+  enabled     = true
+  comment     = "${var.prefix} demo-control-panel"
+  price_class = "PriceClass_100"
+  web_acl_id  = aws_wafv2_web_acl.control_panel.arn
+  # The WAF allowlist is IPv4 only; with IPv6 on, dual-stack viewers would be blocked.
+  is_ipv6_enabled = false
+
+  origin {
+    origin_id   = "demo-control-panel"
+    domain_name = data.kubernetes_service_v1.demo_control_panel.status[0].load_balancer[0].ingress[0].hostname
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = random_password.control_panel_origin.result
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id         = "demo-control-panel"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    compress                 = true
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
 }

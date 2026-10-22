@@ -1,6 +1,18 @@
-{{- if not .Values.allowedCidrs }}
-{{- fail "allowedCidrs must list at least one CIDR (the LoadBalancer is never opened to everyone)" }}
+{{- if not .Values.originSecret }}
+{{- fail "originSecret is required: the LoadBalancer is open, and the app only serves requests carrying it" }}
 {{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-control-panel-origin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: demo-control-panel
+    app.kubernetes.io/part-of: banking-demo
+type: Opaque
+stringData:
+  origin-secret: {{ .Values.originSecret | quote }}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -32,6 +44,7 @@ spec:
         app.kubernetes.io/part-of: banking-demo
       annotations:
         checksum/fx-rates: {{ .Values.fxRatesManifests | sha256sum | trunc 16 }}
+        checksum/origin: {{ .Values.originSecret | sha256sum | trunc 16 }}
     spec:
       # No OTel inject-* annotation: presenter tooling stays out of APM.
       serviceAccountName: demo-control-panel
@@ -68,6 +81,11 @@ spec:
               value: {{ .Values.defaultLoadRate | quote }}
             - name: FX_MANIFESTS
               value: /etc/fx-rates/manifests.json
+            - name: ORIGIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: demo-control-panel-origin
+                  key: origin-secret
           volumeMounts:
             - name: fx-rates
               mountPath: /etc/fx-rates
@@ -98,8 +116,9 @@ spec:
             name: demo-control-panel-fx-rates
 ---
 # Classic Load Balancer from the EKS legacy cloud provider (no AWS Load Balancer
-# Controller in this cluster). loadBalancerSourceRanges becomes the CLB security
-# group's ingress rules, so only allowedCidrs can reach it.
+# Controller in this cluster). It is the CloudFront origin, so it is open to the
+# internet; the app rejects requests without the CloudFront X-Origin-Verify header,
+# and the IP allowlist is enforced by AWS WAF on CloudFront.
 apiVersion: v1
 kind: Service
 metadata:
@@ -114,8 +133,6 @@ metadata:
   {{- end }}
 spec:
   type: LoadBalancer
-  loadBalancerSourceRanges:
-    {{- toYaml .Values.allowedCidrs | nindent 4 }}
   selector:
     app.kubernetes.io/name: demo-control-panel
   ports:
