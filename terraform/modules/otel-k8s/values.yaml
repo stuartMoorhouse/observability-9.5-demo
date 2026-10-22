@@ -48,6 +48,27 @@ collectors:
     env:
       - name: ELASTIC_AGENT_OTEL
         value: "true"
+      # Demo Postgres connection for the postgresql receiver (secret created by the otel-k8s module).
+      - name: POSTGRES_ENDPOINT
+        valueFrom:
+          secretKeyRef:
+            name: postgres-credentials
+            key: endpoint
+      - name: POSTGRES_USER
+        valueFrom:
+          secretKeyRef:
+            name: postgres-credentials
+            key: username
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: postgres-credentials
+            key: password
+      - name: POSTGRES_DB
+        valueFrom:
+          secretKeyRef:
+            name: postgres-credentials
+            key: database
     config:
       exporters:
         # [Debug exporter](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/debugexporter/README.md)
@@ -167,6 +188,19 @@ collectors:
               enabled: true
             k8s.container.status.last_terminated_reason:
               enabled: true
+        # [PostgreSQL Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/postgresqlreceiver)
+        # Demo database internals (backends, commits/rollbacks, db size, table/index stats, deadlocks).
+        # The demo user owns the database, which is enough for the stats queries.
+        postgresql:
+          endpoint: ${env:POSTGRES_ENDPOINT}
+          transport: tcp
+          username: ${env:POSTGRES_USER}
+          password: ${env:POSTGRES_PASSWORD}
+          databases:
+            - ${env:POSTGRES_DB}
+          collection_interval: 30s
+          tls:
+            insecure: true # in-cluster, Postgres has no TLS
       # [Service Section](https://opentelemetry.io/docs/collector/configuration/#service)
       service:
         extensions: [cgroup_runtime, health_check]
@@ -185,6 +219,18 @@ collectors:
               - resource/hostname
             receivers:
               - k8s_cluster
+          # Separate pipeline: k8s_attributes keys off pod IP / k8s resource attributes, which the
+          # postgresql receiver does not set.
+          metrics/postgresql:
+            exporters:
+              - debug
+              - otlp_grpc/gateway
+            processors:
+              - resourcedetection/env
+              - resourcedetection/eks
+              - resource/hostname
+            receivers:
+              - postgresql
           logs:
             receivers:
               - k8s_events

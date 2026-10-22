@@ -74,9 +74,10 @@ data "http" "my_ip" {
 }
 
 locals {
-  eks_api_allowed_cidrs = length(var.eks_api_allowed_cidrs) > 0 ? var.eks_api_allowed_cidrs : [
-    "${trimspace(data.http.my_ip.response_body)}/32",
-  ]
+  my_ip_cidr = "${trimspace(data.http.my_ip.response_body)}/32"
+
+  eks_api_allowed_cidrs       = length(var.eks_api_allowed_cidrs) > 0 ? var.eks_api_allowed_cidrs : [local.my_ip_cidr]
+  control_panel_allowed_cidrs = length(var.control_panel_allowed_cidrs) > 0 ? var.control_panel_allowed_cidrs : [local.my_ip_cidr]
 
   eks_exec_args = [
     "eks", "get-token",
@@ -114,6 +115,30 @@ provider "helm" {
 # Modules
 # -----------------------------------------------------------------------------
 
+# Postgres credentials live here rather than in demo-app because both demo-app (the
+# database) and otel-k8s (the postgresql receiver) need them, and demo-app already
+# depends on otel-k8s.
+resource "random_password" "postgres" {
+  length  = 32
+  special = false
+}
+
+# Keep the existing password; regenerating it would break the initialised database volume.
+moved {
+  from = module.demo_app.random_password.postgres
+  to   = random_password.postgres
+}
+
+locals {
+  postgres = {
+    username = "ledger"
+    password = random_password.postgres.result
+    database = "ledger"
+    # demo-app deploys the postgres Service into the "banking" namespace.
+    endpoint = "postgres.banking.svc.cluster.local:5432"
+  }
+}
+
 module "eks" {
   source = "./modules/eks"
 
@@ -144,6 +169,7 @@ module "otel_k8s" {
   kube_stack_chart_version = var.kube_stack_chart_version
   # Resolved exact version (e.g. 9.5.5) even when var.elastic_version is "9.5.x".
   elastic_version = module.elastic_cloud.elastic_version
+  postgres        = local.postgres
 
   depends_on = [module.eks]
 }
@@ -172,6 +198,15 @@ module "demo_app" {
   image_platform      = var.image_platform
   app_version         = "1.4.2"
   loadgen_rate        = var.loadgen_rate
+  postgres = {
+    username = local.postgres.username
+    password = local.postgres.password
+    database = local.postgres.database
+  }
+
+  kibana_url                  = module.elastic_cloud.kibana_endpoint
+  control_panel_allowed_cidrs = local.control_panel_allowed_cidrs
+  tags                        = var.tags
 
   # The Instrumentation CR must exist before pods start, or they are not injected.
   depends_on = [module.eks, module.otel_k8s]

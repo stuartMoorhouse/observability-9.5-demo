@@ -49,6 +49,11 @@ output "fx_rates_image" {
   value       = module.demo_app.fx_rates_image
 }
 
+output "control_panel_url" {
+  description = "demo-control-panel URL, reachable only from control_panel_allowed_cidrs"
+  value       = module.demo_app.control_panel_url
+}
+
 output "demo_sre_password" {
   description = "Password for the demo-sre Kibana user"
   value       = module.kibana_content.demo_sre_password

@@ -35,3 +35,14 @@ variable "api_key_expiration" {
   type        = string
   default     = "90d"
 }
+
+variable "postgres" {
+  description = "Demo Postgres connection for the cluster collector's postgresql receiver (endpoint is host:port)."
+  type = object({
+    username = string
+    password = string
+    database = string
+    endpoint = string
+  })
+  sensitive = true
+}

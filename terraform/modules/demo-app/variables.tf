@@ -41,3 +41,34 @@ variable "loadgen_rate" {
   type        = number
   default     = 5
 }
+
+variable "kibana_url" {
+  description = "Kibana URL for the control panel's deep links"
+  type        = string
+}
+
+variable "control_panel_allowed_cidrs" {
+  description = "Source CIDRs allowed through the demo-control-panel load balancer"
+  type        = list(string)
+
+  validation {
+    condition     = length(var.control_panel_allowed_cidrs) > 0 && !contains(var.control_panel_allowed_cidrs, "0.0.0.0/0")
+    error_message = "control_panel_allowed_cidrs must list at least one CIDR and must not include 0.0.0.0/0."
+  }
+}
+
+variable "tags" {
+  description = "Org tags applied to the control panel's load balancer (it is created by Kubernetes, outside provider default_tags)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "postgres" {
+  description = "Postgres credentials written to the postgres-credentials secret (generated in the root module)"
+  type = object({
+    username = string
+    password = string
+    database = string
+  })
+  sensitive = true
+}

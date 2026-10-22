@@ -1,0 +1,6 @@
+apiVersion: v2
+name: demo-control-panel
+description: Presenter web page that triggers the demo scenarios in-cluster (faults, bad release, load, fx-rates onboarding)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

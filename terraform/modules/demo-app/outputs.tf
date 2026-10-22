@@ -18,3 +18,8 @@ output "release_revision" {
   description = "Helm revision of the demo app; known only once the release is deployed and pods are ready (wait = true)"
   value       = helm_release.demo_app.metadata.revision
 }
+
+output "control_panel_url" {
+  description = "demo-control-panel URL (load balancer DNS; allow 1-3 min after creation for DNS)"
+  value       = "http://${data.kubernetes_service_v1.demo_control_panel.status[0].load_balancer[0].ingress[0].hostname}"
+}

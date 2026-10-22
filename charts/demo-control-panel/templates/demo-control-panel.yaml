@@ -1,0 +1,125 @@
+{{- if not .Values.allowedCidrs }}
+{{- fail "allowedCidrs must list at least one CIDR (the LoadBalancer is never opened to everyone)" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-control-panel-fx-rates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: demo-control-panel
+    app.kubernetes.io/part-of: banking-demo
+data:
+  manifests.json: {{ .Values.fxRatesManifests | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-control-panel
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: demo-control-panel
+    app.kubernetes.io/part-of: banking-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-control-panel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-control-panel
+        app.kubernetes.io/part-of: banking-demo
+      annotations:
+        checksum/fx-rates: {{ .Values.fxRatesManifests | sha256sum | trunc 16 }}
+    spec:
+      # No OTel inject-* annotation: presenter tooling stays out of APM.
+      serviceAccountName: demo-control-panel
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: demo-control-panel
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KIBANA_URL
+              value: {{ .Values.kibanaUrl | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            - name: BASE_VERSION
+              value: {{ .Values.baseVersion | quote }}
+            - name: BAD_VERSION
+              value: {{ .Values.badVersion | quote }}
+            - name: DEFAULT_LOAD_RATE
+              value: {{ .Values.defaultLoadRate | quote }}
+            - name: FX_MANIFESTS
+              value: /etc/fx-rates/manifests.json
+          volumeMounts:
+            - name: fx-rates
+              mountPath: /etc/fx-rates
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+            seLinuxOptions:
+              type: container_t
+      volumes:
+        - name: fx-rates
+          configMap:
+            name: demo-control-panel-fx-rates
+---
+# Classic Load Balancer from the EKS legacy cloud provider (no AWS Load Balancer
+# Controller in this cluster). loadBalancerSourceRanges becomes the CLB security
+# group's ingress rules, so only allowedCidrs can reach it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-control-panel
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: demo-control-panel
+    app.kubernetes.io/part-of: banking-demo
+  {{- with .Values.loadBalancerTags }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: {{ . | quote }}
+  {{- end }}
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.allowedCidrs | nindent 4 }}
+  selector:
+    app.kubernetes.io/name: demo-control-panel
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

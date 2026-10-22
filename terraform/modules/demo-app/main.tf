@@ -3,7 +3,11 @@ locals {
   chart_dir = abspath("${path.module}/../../../charts/demo-app")
   namespace = "banking"
 
-  services = toset(["web-banking", "transfer-service", "fraud-check", "accounts-ledger", "fx-rates"])
+  services = toset(["web-banking", "transfer-service", "fraud-check", "accounts-ledger", "fx-rates", "demo-control-panel"])
+
+  # Built here but not part of the demo-app chart: fx-rates is deployed during
+  # scenario 1, demo-control-panel has its own release below.
+  chart_services = setsubtract(local.services, ["fx-rates", "demo-control-panel"])
 
   # Content hash of each service's source dir (build outputs excluded). Used as the
   # image tag, so ECR tags can stay IMMUTABLE and a rebuild only happens on change.
@@ -111,11 +115,6 @@ resource "kubernetes_namespace_v1" "banking" {
   }
 }
 
-resource "random_password" "postgres" {
-  length  = 32
-  special = false
-}
-
 resource "kubernetes_secret_v1" "postgres" {
   metadata {
     name      = "postgres-credentials"
@@ -123,9 +122,9 @@ resource "kubernetes_secret_v1" "postgres" {
   }
 
   data = {
-    username = "ledger"
-    password = random_password.postgres.result
-    database = "ledger"
+    username = var.postgres.username
+    password = var.postgres.password
+    database = var.postgres.database
   }
 
   type = "Opaque"
@@ -147,7 +146,7 @@ resource "helm_release" "demo_app" {
       rate = var.loadgen_rate
     }
     services = {
-      for svc in setsubtract(local.services, ["fx-rates"]) : svc => merge(
+      for svc in local.chart_services : svc => merge(
         {
           image = {
             repository = aws_ecr_repository.app[svc].repository_url
@@ -170,4 +169,67 @@ resource "helm_release" "demo_app" {
     null_resource.image,
     kubernetes_secret_v1.postgres,
   ]
+}
+
+# ---------------------------------------------------------------------------
+# demo-control-panel: presenter web page that triggers the scenarios in-cluster.
+# Exposed through a Classic Load Balancer restricted to var.control_panel_allowed_cidrs.
+# ---------------------------------------------------------------------------
+
+# fx-rates objects rendered from the same chart scripts/onboard-service.sh installs,
+# so the control panel's "Onboard" button deploys exactly what the script would.
+data "helm_template" "fx_rates" {
+  name      = "fx-rates"
+  chart     = abspath("${path.module}/../../../charts/fx-rates")
+  namespace = kubernetes_namespace_v1.banking.metadata[0].name
+
+  values = [yamlencode({
+    image              = "${aws_ecr_repository.app["fx-rates"].repository_url}:${local.image_tag["fx-rates"]}"
+    instrumentationRef = var.instrumentation_ref
+    appVersion         = var.app_version
+  })]
+}
+
+locals {
+  fx_rates_objects = [
+    for doc in split("\n---\n", "\n${data.helm_template.fx_rates.manifest}\n") : yamldecode(doc)
+    if try(yamldecode(doc), null) != null
+  ]
+}
+
+resource "helm_release" "demo_control_panel" {
+  name      = "demo-control-panel"
+  chart     = abspath("${path.module}/../../../charts/demo-control-panel")
+  namespace = kubernetes_namespace_v1.banking.metadata[0].name
+
+  wait    = true # also waits for the load balancer hostname
+  timeout = 600
+  replace = true
+
+  values = [yamlencode({
+    image = {
+      repository = aws_ecr_repository.app["demo-control-panel"].repository_url
+      tag        = local.image_tag["demo-control-panel"]
+    }
+    allowedCidrs     = var.control_panel_allowed_cidrs
+    loadBalancerTags = join(",", [for k, v in var.tags : "${k}=${v}"])
+    kibanaUrl        = var.kibana_url
+    baseVersion      = var.app_version
+    defaultLoadRate  = var.loadgen_rate
+    fxRatesManifests = jsonencode(local.fx_rates_objects)
+  })]
+
+  depends_on = [
+    null_resource.image,
+    helm_release.demo_app,
+  ]
+}
+
+data "kubernetes_service_v1" "demo_control_panel" {
+  metadata {
+    name      = "demo-control-panel"
+    namespace = helm_release.demo_control_panel.namespace
+  }
+
+  depends_on = [helm_release.demo_control_panel]
 }

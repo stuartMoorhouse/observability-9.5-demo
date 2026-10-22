@@ -13,6 +13,13 @@ All scripts run from the repo root and read endpoints and credentials from
 `terraform output` in `terraform/`. Run the `terraform` commands below from
 `terraform/` (or add `-chdir=terraform`).
 
+While presenting, use the demo control panel
+(`terraform output -raw control_panel_url`) instead of the terminal. It has a
+button for every `fault-inject.sh`, `onboard-service.sh` and `generate-load.sh`
+command below, plus a plain reset. `slo-breach.sh` (measured detection delay)
+and `reset-demo.sh --full` still need the terminal. See the README,
+"Demo control panel".
+
 ## Before the meeting (T-60 min)
 
 1. `scripts/validate.sh` - all read-only checks PASS (criterion 9/10 may SKIP).
