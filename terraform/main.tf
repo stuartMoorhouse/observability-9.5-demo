@@ -50,6 +50,17 @@ provider "aws" {
   }
 }
 
+# AWS WAF for CloudFront (the demo-control-panel IP allowlist) must be created in us-east-1.
+provider "aws" {
+  alias   = "us_east_1"
+  region  = "us-east-1"
+  profile = var.aws_profile
+
+  default_tags {
+    tags = var.tags
+  }
+}
+
 # Authenticates with EC_API_KEY; the key determines the Elastic Cloud organization.
 provider "ec" {}
 
@@ -189,6 +200,11 @@ module "kibana_content" {
 
 module "demo_app" {
   source = "./modules/demo-app"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   prefix              = var.prefix
   aws_region          = var.aws_region

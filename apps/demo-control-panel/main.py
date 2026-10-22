@@ -14,6 +14,7 @@ does what the scripts in scripts/ do with kubectl:
 Elastic-side work (SLO reset, detection-delay measurement) stays in scripts/.
 """
 
+import hmac
 import json
 import os
 import re
@@ -32,6 +33,8 @@ BASE_VERSION = os.environ.get("BASE_VERSION", "1.4.2")
 BAD_VERSION = os.environ.get("BAD_VERSION", "2.0.0")
 DEFAULT_LOAD_RATE = int(os.environ.get("DEFAULT_LOAD_RATE", "5"))
 FX_MANIFESTS = os.environ.get("FX_MANIFESTS", "/etc/fx-rates/manifests.json")
+# CloudFront adds this header; requests straight to the load balancer lack it. Empty = no check (local runs).
+ORIGIN_SECRET = os.environ.get("ORIGIN_SECRET", "")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 FAULT_CONFIGMAP = "fault-config"
@@ -211,7 +214,6 @@ def reset():
         set_env("loadgen", RATE=str(DEFAULT_LOAD_RATE)),
         scale("loadgen", 1),
     ]
-    msgs.append("SLO and dashboard reset is not included: run scripts/reset-demo.sh --full for that.")
     return " ".join(msgs)
 
 
@@ -309,6 +311,11 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, code, obj):
         self.send_body(code, json.dumps(obj).encode(), "application/json")
 
+    def from_cloudfront(self):
+        if not ORIGIN_SECRET:
+            return True
+        return hmac.compare_digest(self.headers.get("X-Origin-Verify", ""), ORIGIN_SECRET)
+
     def send_file(self, name):
         path = os.path.join(STATIC_DIR, name)
         ext = os.path.splitext(name)[1].lower()
@@ -323,6 +330,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/healthz":
                 self.send_body(200, b"ok", "text/plain")
+            elif not self.from_cloudfront():
+                self.send_json(403, {"error": "forbidden"})
             elif path == "/":
                 self.send_file("index.html")
             elif path.startswith("/static/"):
@@ -337,6 +346,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(502, {"error": str(e)})
 
     def do_POST(self):
+        if not self.from_cloudfront():
+            self.send_json(403, {"error": "forbidden"})
+            return
         if urllib.parse.urlparse(self.path).path != "/api/action":
             self.send_json(404, {"error": "not found"})
             return

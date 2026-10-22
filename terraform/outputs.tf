@@ -50,7 +50,7 @@ output "fx_rates_image" {
 }
 
 output "control_panel_url" {
-  description = "demo-control-panel URL, reachable only from control_panel_allowed_cidrs"
+  description = "demo-control-panel HTTPS URL (CloudFront), reachable only from control_panel_allowed_cidrs"
   value       = module.demo_app.control_panel_url
 }
 

@@ -48,7 +48,7 @@ variable "kibana_url" {
 }
 
 variable "control_panel_allowed_cidrs" {
-  description = "Source CIDRs allowed through the demo-control-panel load balancer"
+  description = "IPv4 CIDRs allowed through the AWS WAF on the demo-control-panel CloudFront distribution"
   type        = list(string)
 
   validation {
