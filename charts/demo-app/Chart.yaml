@@ -1,0 +1,6 @@
+apiVersion: v2
+name: demo-app
+description: Banking demo services (web-banking, transfer-service, fraud-check, accounts-ledger), Postgres, k6 load generator and fault ConfigMap
+type: application
+version: 0.1.0
+appVersion: "1.4.2"

@@ -1,0 +1,105 @@
+# OTel Operator Instrumentation CR (<namespace>/<name>) referenced by the inject-* annotations.
+instrumentationRef: opentelemetry-operator-system/elastic-instrumentation
+
+# service.version for all services (bad release: set APP_VERSION=2.0.0 BAD_RELEASE=true on transfer-service)
+appVersion: "1.4.2"
+environment: banking-demo
+
+imagePullPolicy: IfNotPresent
+
+# fault-config ConfigMap, mounted at /etc/fault/ in every service
+faults:
+  LATENCY_MS: "0"     # transfer-service added delay (ms)
+  ERROR_RATE: "0"     # fraud-check HTTP 500 percentage (0-100)
+  SLOW_DB: "false"    # accounts-ledger slow query (true/false)
+
+# Application services. Image repository + tag are set by Terraform (modules/demo-app).
+services:
+  web-banking:
+    language: nodejs
+    runAsUser: 1000
+    image:
+      repository: web-banking
+      tag: "1.4.2"
+    port: 8080
+    livenessPath: /healthz
+    readinessPath: /healthz
+    env:
+      ACCOUNTS_LEDGER_URL: http://accounts-ledger:8080
+      TRANSFER_SERVICE_URL: http://transfer-service:8080
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+
+  transfer-service:
+    language: java
+    runAsUser: 10001
+    image:
+      repository: transfer-service
+      tag: "1.4.2"
+    port: 8080
+    livenessPath: /actuator/health/liveness
+    readinessPath: /actuator/health/readiness
+    env:
+      FRAUD_CHECK_URL: http://fraud-check:8080
+      ACCOUNTS_LEDGER_URL: http://accounts-ledger:8080
+      FX_RATES_URL: http://fx-rates:8080
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { cpu: "1", memory: 768Mi }
+
+  fraud-check:
+    language: dotnet
+    # mcr.microsoft.com/dotnet/aspnet is Debian (glibc) -> linux-x64 runtime of the .NET auto-instrumentation
+    dotnetRuntime: linux-x64
+    runAsUser: 1654
+    image:
+      repository: fraud-check
+      tag: "1.4.2"
+    port: 8080
+    livenessPath: /healthz
+    readinessPath: /healthz
+    env:
+      HOME: /tmp
+      # Do not set DOTNET_EnableDiagnostics=0: it also blocks the CLR profiler, and
+      # EDOT .NET auto-instrumentation then refuses to load (no traces).
+      OTEL_DOTNET_AUTO_LOG_DIRECTORY: /tmp/otel-dotnet
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+
+  accounts-ledger:
+    language: python
+    runAsUser: 10001
+    image:
+      repository: accounts-ledger
+      tag: "1.4.2"
+    port: 8080
+    livenessPath: /healthz
+    readinessPath: /healthz
+    postgres: true
+    env:
+      OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+
+postgres:
+  image: postgres:16.15-bookworm
+  # Secret created by Terraform (random_password), keys: username, password, database
+  secretName: postgres-credentials
+  persistence:
+    enabled: false      # emptyDir for the demo; data is re-seeded on startup
+    size: 2Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+loadgen:
+  enabled: true
+  image: grafana/k6:1.8.2
+  rate: 5               # requests per second
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }

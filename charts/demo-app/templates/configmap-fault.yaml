@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fault-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "demo-app.labels" . | nindent 4 }}
+data:
+  LATENCY_MS: {{ .Values.faults.LATENCY_MS | quote }}
+  ERROR_RATE: {{ .Values.faults.ERROR_RATE | quote }}
+  SLOW_DB: {{ .Values.faults.SLOW_DB | quote }}

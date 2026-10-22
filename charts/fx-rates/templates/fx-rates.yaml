@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fx-rates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: fx-rates
+    app.kubernetes.io/part-of: banking-demo
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fx-rates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: fx-rates
+    app.kubernetes.io/part-of: banking-demo
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fx-rates
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fx-rates
+        app.kubernetes.io/part-of: banking-demo
+        app.kubernetes.io/version: {{ .Values.appVersion | quote }}
+      annotations:
+        # The only thing needed for telemetry: the operator injects EDOT Python.
+        instrumentation.opentelemetry.io/inject-python: {{ .Values.instrumentationRef | quote }}
+    spec:
+      serviceAccountName: fx-rates
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fx-rates
+          image: {{ .Values.image | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          env:
+            - name: APP_VERSION
+              value: {{ .Values.appVersion | quote }}
+            - name: BAD_RELEASE
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: fx-rates
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment={{ .Values.environment }},service.version=$(APP_VERSION)"
+            - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
+              value: "true"
+            - name: PORT
+              value: {{ .Values.port | quote }}
+            - name: FAULT_DIR
+              value: /etc/fault
+          volumeMounts:
+            - name: fault-config
+              mountPath: /etc/fault
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+            seLinuxOptions:
+              type: container_t
+      volumes:
+        - name: fault-config
+          configMap:
+            name: fault-config
+            optional: true
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fx-rates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: fx-rates
+    app.kubernetes.io/part-of: banking-demo
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: fx-rates
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http
+      protocol: TCP

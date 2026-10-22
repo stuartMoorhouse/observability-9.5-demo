@@ -1,0 +1,139 @@
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "demo-app.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/version: {{ $.Values.appVersion | quote }}
+        {{- include "demo-app.labels" $ | nindent 8 }}
+      annotations:
+        instrumentation.opentelemetry.io/inject-{{ $svc.language }}: {{ $.Values.instrumentationRef | quote }}
+        {{- if eq $svc.language "dotnet" }}
+        instrumentation.opentelemetry.io/otel-dotnet-auto-runtime: {{ $svc.dotnetRuntime | default "linux-x64" | quote }}
+        {{- end }}
+    spec:
+      serviceAccountName: demo-app
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $svc.runAsUser }}
+        runAsGroup: {{ $svc.runAsUser }}
+        fsGroup: {{ $svc.runAsUser }}
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ $name }}
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            # APP_VERSION must precede OTEL_RESOURCE_ATTRIBUTES for $(APP_VERSION) expansion
+            - name: APP_VERSION
+              value: {{ $.Values.appVersion | quote }}
+            - name: BAD_RELEASE
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: {{ $name | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment={{ $.Values.environment }},service.version=$(APP_VERSION)"
+            - name: PORT
+              value: {{ $svc.port | quote }}
+            - name: FAULT_DIR
+              value: /etc/fault
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- if $svc.postgres }}
+            - name: PGHOST
+              value: postgres
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.secretName }}
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.secretName }}
+                  key: password
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.secretName }}
+                  key: database
+            {{- end }}
+          volumeMounts:
+            - name: fault-config
+              mountPath: /etc/fault
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet:
+              path: {{ $svc.livenessPath }}
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.livenessPath }}
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.readinessPath }}
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          securityContext:
+            {{- include "demo-app.containerSecurityContext" $ | nindent 12 }}
+      volumes:
+        - name: fault-config
+          configMap:
+            name: fault-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "demo-app.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

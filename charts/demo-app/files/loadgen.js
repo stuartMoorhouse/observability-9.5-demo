@@ -1,0 +1,1 @@
+../../../apps/loadgen/script.js

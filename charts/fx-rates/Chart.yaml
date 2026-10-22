@@ -1,0 +1,6 @@
+apiVersion: v2
+name: fx-rates
+description: fx-rates service (demo scenario 1, self-service onboarding with OTel auto-instrumentation only)
+type: application
+version: 0.1.0
+appVersion: "1.4.2"
