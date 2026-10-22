@@ -135,7 +135,9 @@ scenarios from the browser, so you do not need to switch to a terminal while pre
 terraform -chdir=terraform output -raw control_panel_url
 ```
 
-- **Scenarios tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
+- **Demo scenario tab (default):** the persona and situation, how the app works, how it is
+  instrumented and how the signals reach Elastic Cloud.
+- **Trigger errors tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
   the scenario 4 SLO breach (3000 ms), load rate and reset. It shows live fault, release,
   load and fx-rates state, and links to Kibana.
 - **Demo architecture tab:** shows `apps/demo-control-panel/static/architecture.png`

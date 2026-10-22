@@ -74,6 +74,14 @@
   .arch .empty { padding: 80px 20px; color: var(--muted); }
   .arch .empty strong { display: block; font-size: 18px; color: var(--text); margin-bottom: 6px; }
 
+  .story { max-width: 820px; }
+  .story .card { margin-bottom: 16px; }
+  .story .card h2 { margin-bottom: 8px; }
+  .story p { margin: 0 0 10px; }
+  .story ol, .story ul { margin: 0 0 10px; padding-left: 22px; }
+  .story li { margin-bottom: 4px; }
+  .story code { font-family: var(--mono); font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+
   @media (max-width: 600px) {
     header, nav, main { padding-left: 16px; padding-right: 16px; }
     .grid { grid-template-columns: 1fr; }
@@ -87,11 +95,69 @@
   <span class="conn"><span class="dot" id="conn-dot"></span><span id="conn-text">Connecting...</span></span>
 </header>
 <nav role="tablist">
-  <button role="tab" aria-selected="true" data-tab="architecture">Demo architecture</button>
-  <button role="tab" aria-selected="false" data-tab="scenarios">Scenarios</button>
+  <button role="tab" aria-selected="true" data-tab="story">Demo scenario</button>
+  <button role="tab" aria-selected="false" data-tab="architecture">Demo architecture</button>
+  <button role="tab" aria-selected="false" data-tab="scenarios">Trigger errors</button>
 </nav>
 
 <main>
+  <section class="tab story" id="tab-story">
+    <div class="card">
+      <h2>The persona and situation</h2>
+      <p>You are the on-call SRE for a retail bank's digital channels. Customers make payment transfers in the
+        web banking app. The bank needs to know when transfers slow down or fail, why, and who needs to act,
+        before customers start complaining.</p>
+      <p>During the demo you break the payment path on purpose (a bad release, a slow database, errors, added
+        latency) and use Elastic to go from alert to root cause, check the SLO, and onboard a new service
+        without any Kibana setup.</p>
+    </div>
+
+    <div class="card">
+      <h2>How the app works</h2>
+      <p>A small payments application runs in the <code>banking</code> namespace on Amazon EKS. A transfer
+        follows this path:</p>
+      <ol>
+        <li><strong>web-banking</strong> (Node.js) receives the customer's transfer request.</li>
+        <li><strong>transfer-service</strong> (Java, Spring Boot) orchestrates the transfer.</li>
+        <li><strong>fraud-check</strong> (.NET) scores the transfer for fraud.</li>
+        <li><strong>accounts-ledger</strong> (Python, FastAPI) posts the debit and credit to Postgres.</li>
+      </ol>
+      <p>A k6 load generator in the cluster sends steady traffic. <strong>fx-rates</strong> (Python) is the
+        "new service" that you onboard live. The faults are driven by a <code>fault-config</code> ConfigMap,
+        which the services re-read every 5 seconds. The Trigger errors tab edits that ConfigMap for you.</p>
+    </div>
+
+    <div class="card">
+      <h2>How it is instrumented</h2>
+      <ul>
+        <li>No service image contains an OpenTelemetry SDK. Each deployment has one pod annotation, and the
+          OpenTelemetry Operator injects the matching language auto-instrumentation (Java, Node.js, .NET,
+          Python) when the pod starts.</li>
+        <li>The auto-instrumentation produces traces, metrics and logs for every request, with the
+          service name, version and environment set as resource attributes.</li>
+        <li>The Elastic Distribution of OpenTelemetry (EDOT) collectors, installed with the
+          opentelemetry-kube-stack Helm chart, add the infrastructure view. A DaemonSet collects node, pod and
+          container metrics and logs. A cluster collector collects Kubernetes cluster metrics and Postgres
+          metrics.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>How the signals get to Elastic Cloud</h2>
+      <ol>
+        <li>Services send OTLP to the EDOT DaemonSet collector on their node, which adds Kubernetes metadata
+          (pod, namespace, deployment).</li>
+        <li>The DaemonSet and cluster collectors forward everything over OTLP to an EDOT gateway collector in
+          the cluster.</li>
+        <li>The gateway derives APM metrics from the traces and writes the data to Elasticsearch on Elastic
+          Cloud Hosted 9.5, authenticating with an API key. The data is stored in the OpenTelemetry-native
+          format, with no translation to a proprietary schema.</li>
+        <li>In Kibana, Terraform has already created the SLO, alert rules, ML anomaly job, dashboards and
+          users. Any new service that sends data is picked up by them automatically.</li>
+      </ol>
+    </div>
+  </section>
+
   <section class="tab" id="tab-scenarios" hidden>
     <div class="state" id="state"></div>
 
@@ -171,7 +237,7 @@
     <ul id="log"></ul>
   </section>
 
-  <section class="tab" id="tab-architecture">
+  <section class="tab" id="tab-architecture" hidden>
     <div class="arch" id="arch"></div>
   </section>
 </main>
