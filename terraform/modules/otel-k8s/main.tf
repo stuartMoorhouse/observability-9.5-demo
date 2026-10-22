@@ -77,6 +77,19 @@ resource "kubernetes_secret_v1" "elastic" {
   }
 }
 
+# Read by the cluster collector's postgresql receiver (env vars in values.yaml). A copy in this
+# namespace because secretKeyRef cannot reach across namespaces.
+resource "kubernetes_secret_v1" "postgres" {
+  metadata {
+    name      = "postgres-credentials"
+    namespace = kubernetes_namespace_v1.otel.metadata[0].name
+  }
+
+  type = "Opaque"
+
+  data = var.postgres
+}
+
 resource "helm_release" "kube_stack" {
   name       = "opentelemetry-kube-stack"
   repository = "https://open-telemetry.github.io/opentelemetry-helm-charts"
@@ -101,5 +114,5 @@ resource "helm_release" "kube_stack" {
   max_history     = 5
 
   # Secret must exist before the collectors start, otherwise pods crash-loop on missing env.
-  depends_on = [kubernetes_secret_v1.elastic]
+  depends_on = [kubernetes_secret_v1.elastic, kubernetes_secret_v1.postgres]
 }

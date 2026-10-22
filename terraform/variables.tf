@@ -77,3 +77,9 @@ variable "eks_api_allowed_cidrs" {
   type        = list(string)
   default     = []
 }
+
+variable "control_panel_allowed_cidrs" {
+  description = "CIDRs allowed to reach the demo-control-panel load balancer. Empty = only the public IP of the machine running Terraform (re-apply if it changes)."
+  type        = list(string)
+  default     = []
+}

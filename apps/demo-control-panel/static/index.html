@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Control Panel</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --surface: #ffffff; --border: #d9dee6; --text: #1a1f2b; --muted: #5c6577;
+    --accent: #0b64dd; --accent-text: #ffffff; --on: #c7372f; --on-bg: #fdecea;
+    --ok: #1e7f4f; --ok-bg: #e6f4ec; --warn: #9a6200; --warn-bg: #fff4e0;
+    --radius: 10px; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; background: var(--surface);
+           border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .env { color: var(--muted); font-size: 13px; }
+  .conn { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--ok); } .dot.down { background: var(--on); }
+  nav { display: flex; gap: 4px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  nav button { border: 0; background: none; padding: 12px 14px; font: inherit; color: var(--muted); cursor: pointer;
+               border-bottom: 2px solid transparent; }
+  nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 24px 40px; }
+  .tab[hidden] { display: none; }
+
+  .state { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+  .tile .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .tile.on { border-color: var(--on); background: var(--on-bg); } .tile.on .v { color: var(--on); }
+  .tile.busy { border-color: var(--warn); background: var(--warn-bg); } .tile.busy .v { color: var(--warn); }
+  .tile .sub { font-size: 12px; color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .card h2 { font-size: 16px; margin: 0 0 2px; }
+  .card .num { color: var(--muted); font-weight: 500; margin-right: 6px; }
+  .card p.desc { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .row:first-of-type { border-top: 0; }
+  .row .label { flex: 1 1 140px; font-weight: 500; }
+  .row .label small { display: block; color: var(--muted); font-weight: 400; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--bg); color: var(--muted); }
+  .badge.on { background: var(--on-bg); color: var(--on); }
+  .badge.busy { background: var(--warn-bg); color: var(--warn); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  input[type=number] { width: 84px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+  button.act { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface);
+               color: var(--text); font: inherit; font-weight: 500; cursor: pointer; }
+  button.act.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.act.danger { background: var(--on); border-color: var(--on); color: #fff; }
+  button.act:disabled { opacity: .5; cursor: progress; }
+  button.act:focus-visible, nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .links a { padding: 6px 12px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface);
+             color: var(--accent); text-decoration: none; font-size: 13px; }
+  .links a:hover { border-color: var(--accent); }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 24px 0 8px; }
+  #log { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  #log li { padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; }
+  #log li.err { border-color: var(--on); background: var(--on-bg); }
+  #log time { font-family: var(--mono); color: var(--muted); margin-right: 8px; }
+  #log .expect { display: block; color: var(--muted); margin-top: 2px; }
+
+  .arch { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+          text-align: center; }
+  .arch img { max-width: 100%; height: auto; }
+  .arch .empty { padding: 80px 20px; color: var(--muted); }
+  .arch .empty strong { display: block; font-size: 18px; color: var(--text); margin-bottom: 6px; }
+
+  @media (max-width: 600px) {
+    header, nav, main { padding-left: 16px; padding-right: 16px; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Banking Demo Control Panel</h1>
+  <span class="env" id="env"></span>
+  <span class="conn"><span class="dot" id="conn-dot"></span><span id="conn-text">Connecting...</span></span>
+</header>
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-tab="scenarios">Scenarios</button>
+  <button role="tab" aria-selected="false" data-tab="architecture">Demo architecture</button>
+</nav>
+
+<main>
+  <section class="tab" id="tab-scenarios">
+    <div class="state" id="state"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h2><span class="num">1</span>Self-service onboarding</h2>
+        <p class="desc">Deploy fx-rates with only the OTel inject-python annotation. No Kibana changes.</p>
+        <div class="row">
+          <span class="label">fx-rates <small>charts/fx-rates</small></span>
+          <span class="badge" id="b-fx"></span>
+          <button class="act primary" data-action="fx-onboard">Onboard</button>
+          <button class="act" data-action="fx-remove">Remove</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">2-3</span>Incident to root cause</h2>
+        <p class="desc">Start about 5 min before you need the alert. bad-version for correlations, slow-db for the trace story.</p>
+        <div class="row">
+          <span class="label">Bad release <small>transfer-service <span class="bad-v"></span></small></span>
+          <span class="badge" id="b-bad"></span>
+          <button class="act primary" data-action="bad-version-on">On</button>
+          <button class="act" data-action="bad-version-off">Off</button>
+        </div>
+        <div class="row">
+          <span class="label">Slow DB <small>accounts-ledger pg_sleep</small></span>
+          <span class="badge" id="b-slowdb"></span>
+          <button class="act primary" data-action="slow-db-on">On</button>
+          <button class="act" data-action="slow-db-off">Off</button>
+        </div>
+        <div class="row">
+          <span class="label">Errors <small>fraud-check HTTP 500, %</small></span>
+          <span class="badge" id="b-errors"></span>
+          <input type="number" id="v-errors" min="1" max="100" aria-label="Error rate percent">
+          <button class="act primary" data-action="errors-on" data-input="v-errors">On</button>
+          <button class="act" data-action="errors-off">Off</button>
+        </div>
+        <div class="row">
+          <span class="label">Latency <small>transfer-service POST /transfer, ms</small></span>
+          <span class="badge" id="b-latency"></span>
+          <input type="number" id="v-latency" min="1" max="60000" aria-label="Latency in milliseconds">
+          <button class="act primary" data-action="latency-on" data-input="v-latency">On</button>
+          <button class="act" data-action="latency-off">Off</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">4</span>SLO burn-rate breach</h2>
+        <p class="desc">3000 ms on transfer-service: every transfer is a bad event. Start ~15 min ahead. For the measured detection delay, run scripts/slo-breach.sh instead.</p>
+        <div class="row">
+          <span class="label">Latency 3000 ms</span>
+          <span class="badge" id="b-slo"></span>
+          <button class="act primary" data-action="slo-breach-on">Start</button>
+          <button class="act" data-action="slo-breach-off">Stop</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Load and reset</h2>
+        <p class="desc">k6 load generator inside the cluster. Reset turns faults off, restores the baseline release, removes fx-rates and sets the default load.</p>
+        <div class="row">
+          <span class="label">Load <small>requests / s</small></span>
+          <input type="number" id="v-load" min="1" max="200" aria-label="Requests per second">
+          <button class="act primary" data-action="load-rate" data-input="v-load">Set</button>
+          <button class="act" data-action="load-stop">Stop</button>
+        </div>
+        <div class="row">
+          <span class="label">Baseline <small>SLOs and dashboards: scripts/reset-demo.sh --full</small></span>
+          <button class="act danger" data-action="reset" data-confirm="Reset the demo to baseline?">Reset demo</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="links" id="links"></div>
+
+    <h3>Activity</h3>
+    <ul id="log"></ul>
+  </section>
+
+  <section class="tab" id="tab-architecture" hidden>
+    <div class="arch" id="arch"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let cfg = null;
+
+function el(tag, props = {}, ...children) {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const c of children) n.append(c);
+  return n;
+}
+
+function badge(id, text, kind) {
+  const b = $(id);
+  b.textContent = text;
+  b.className = "badge" + (kind ? " " + kind : "");
+}
+
+function tile(key, value, sub, kind) {
+  return el("div", { className: "tile" + (kind ? " " + kind : "") },
+    el("div", { className: "k", textContent: key }),
+    el("div", { className: "v", textContent: value }),
+    el("div", { className: "sub", textContent: sub || " " }));
+}
+
+function render(s) {
+  const f = s.faults, r = s.release, lg = s.loadgen, fx = s.fx_rates;
+  const rolling = (d) => d && !d.complete;
+  const tiles = [
+    tile("Latency", f.latency_ms ? f.latency_ms + " ms" : "off", "transfer-service", f.latency_ms ? "on" : ""),
+    tile("Errors", f.error_rate ? f.error_rate + " %" : "off", "fraud-check", f.error_rate ? "on" : ""),
+    tile("Slow DB", f.slow_db ? "on" : "off", "accounts-ledger", f.slow_db ? "on" : ""),
+    r ? tile("Release", r.version || "?", rolling(r) ? `rolling out ${r.ready}/${r.replicas}` : "transfer-service",
+             rolling(r) ? "busy" : (r.bad ? "on" : "")) : tile("Release", "missing", "", "on"),
+    lg ? tile("Load", lg.replicas ? lg.rate + " req/s" : "stopped", rolling(lg) ? "starting" : "k6",
+              rolling(lg) ? "busy" : (lg.replicas ? "" : "on")) : tile("Load", "missing", "", "on"),
+    tile("fx-rates", fx ? (fx.complete ? "running" : "starting") : "not installed", fx ? `${fx.ready}/${fx.replicas} ready` : "",
+         fx && !fx.complete ? "busy" : ""),
+  ];
+  $("state").replaceChildren(...tiles);
+
+  badge("b-fx", fx ? (fx.complete ? "running" : "starting") : "not installed", fx ? (fx.complete ? "ok" : "busy") : "");
+  badge("b-bad", r ? (rolling(r) ? "rolling out" : (r.bad ? "on" : "off")) : "?", r && rolling(r) ? "busy" : (r && r.bad ? "on" : ""));
+  badge("b-slowdb", f.slow_db ? "on" : "off", f.slow_db ? "on" : "");
+  badge("b-errors", f.error_rate ? f.error_rate + " %" : "off", f.error_rate ? "on" : "");
+  badge("b-latency", f.latency_ms ? f.latency_ms + " ms" : "off", f.latency_ms ? "on" : "");
+  const slo = f.latency_ms === 3000;
+  badge("b-slo", slo ? "running" : "off", slo ? "on" : "");
+}
+
+function setConn(ok, text) {
+  $("conn-dot").className = "dot " + (ok ? "live" : "down");
+  $("conn-text").textContent = text;
+}
+
+async function poll() {
+  try {
+    const resp = await fetch("/api/status", { cache: "no-store" });
+    const body = await resp.json();
+    if (!resp.ok) throw new Error(body.error || resp.status);
+    render(body);
+    setConn(true, "Live " + body.time.slice(11, 19) + " UTC");
+  } catch (e) {
+    setConn(false, "Status unavailable: " + e.message);
+  }
+}
+
+function log(text, expect, isErr) {
+  const li = el("li", { className: isErr ? "err" : "" },
+    el("time", { textContent: new Date().toLocaleTimeString() }), text);
+  if (expect) li.append(el("span", { className: "expect", textContent: "Expect: " + expect }));
+  $("log").prepend(li);
+}
+
+async function act(btn) {
+  if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
+  const input = btn.dataset.input ? $(btn.dataset.input).value : undefined;
+  btn.disabled = true;
+  try {
+    const resp = await fetch("/api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: btn.dataset.action, value: input }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) throw new Error(body.error || resp.status);
+    log(body.message, body.expect, false);
+  } catch (e) {
+    log(btn.dataset.action + " failed: " + e.message, null, true);
+  } finally {
+    btn.disabled = false;
+    poll();
+  }
+}
+
+function showTab(name) {
+  document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  document.querySelectorAll(".tab").forEach((t) => (t.hidden = t.id !== "tab-" + name));
+}
+
+function renderArch() {
+  const box = $("arch");
+  if (cfg && cfg.architecture) {
+    box.replaceChildren(el("img", { src: cfg.architecture, alt: "Demo architecture" }));
+  } else {
+    box.replaceChildren(el("div", { className: "empty" },
+      el("strong", { textContent: "Demo architecture diagram coming soon" }),
+      "Add apps/demo-control-panel/static/architecture.png (or .svg) and run terraform apply."));
+  }
+}
+
+async function init() {
+  document.querySelectorAll("button.act").forEach((b) => b.addEventListener("click", () => act(b)));
+  document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+  try {
+    cfg = await (await fetch("/api/config")).json();
+    $("env").textContent = `${cfg.environment} / namespace ${cfg.namespace}`;
+    $("v-latency").value = cfg.defaults.latency_ms;
+    $("v-errors").value = cfg.defaults.error_rate;
+    $("v-load").value = cfg.defaults.load_rate;
+    document.querySelectorAll(".bad-v").forEach((n) => (n.textContent = `${cfg.base_version} -> ${cfg.bad_version}`));
+    $("links").replaceChildren(...cfg.kibana_links.map((l) =>
+      el("a", { href: l.url, target: "_blank", rel: "noopener", textContent: l.label + " ↗" })));
+  } catch (e) {
+    log("Could not load config: " + e.message, null, true);
+  }
+  renderArch();
+  poll();
+  setInterval(poll, 3000);
+}
+init();
+</script>
+</body>
+</html>

@@ -64,7 +64,7 @@ under `scripts/`, measured results under `results/`.
 | Elastic Cloud API key | Created in your Elastic Cloud organization (Organization > API keys) and exported as `EC_API_KEY`. The key selects the organization. |
 | Terraform >= 1.5 | |
 | kubectl | Kubeconfig is written by Terraform (`aws eks update-kubeconfig`). |
-| helm 3 | Used by `scripts/onboard-service.sh`. |
+| helm 3 | Used by `scripts/onboard-service.sh` and `helm lint` of the charts. |
 | docker or podman | Images are built for `linux/arm64` (Graviton nodes, native on Apple Silicon) and pushed to ECR. Set `image_platform = "linux/amd64"` for x86 nodes; that needs emulation on Apple Silicon. |
 | jq, curl | Used by all scripts. |
 | gitleaks (optional) | Secrets scan for `scripts/validate.sh` (criterion 13). |
@@ -125,6 +125,35 @@ Network access: the public EKS API endpoint only accepts the public IP of the
 machine running `terraform apply` (detected automatically). If you present from
 a different network, re-run `terraform apply` there first, or list CIDRs in
 `eks_api_allowed_cidrs`.
+
+## Demo control panel
+
+`demo-control-panel` is a web page in the `banking` namespace that triggers the
+scenarios from the browser, so you do not need to switch to a terminal while presenting:
+
+```bash
+terraform -chdir=terraform output -raw control_panel_url
+```
+
+- **Scenarios tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
+  the scenario 4 SLO breach (3000 ms), load rate and reset. It shows live fault, release,
+  load and fx-rates state, and links to Kibana.
+- **Demo architecture tab:** shows `apps/demo-control-panel/static/architecture.png`
+  (or `.svg`) once that file exists. Add it and run `terraform apply` to rebuild the image.
+- **Access:** a Classic Load Balancer on HTTP port 80. Its security group only admits
+  `control_panel_allowed_cidrs`, which defaults to the public IP of the machine running
+  `terraform apply`. If you present from another network, re-apply there or set the CIDRs.
+  There is no login, so the IP restriction is the only access control.
+- **Permissions:** a namespace-scoped Role. It can patch `fault-config`, annotate pods,
+  patch `transfer-service` and `loadgen`, and create or delete the `fx-rates` objects.
+- **fx-rates:** onboarding applies the objects rendered from `charts/fx-rates` through the
+  Kubernetes API, not `helm install`. `scripts/onboard-service.sh uninstall` and
+  `scripts/reset-demo.sh` remove them either way.
+- **Elastic-side work stays in scripts:** the SLO reset and dashboard redeploy
+  (`reset-demo.sh --full`) and the measured detection delay (`slo-breach.sh`) need the
+  `elastic` password, which is kept out of the cluster.
+- **Drift:** like the scripts, the panel changes Helm-managed objects. A later
+  `terraform apply` resets them to their defaults.
 
 ## Running the scenarios
 

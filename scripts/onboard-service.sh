@@ -32,8 +32,13 @@ do_uninstall() {
     info "Uninstalling Helm release ${RELEASE} from ${NAMESPACE}..."
     helm uninstall "${RELEASE}" -n "${NAMESPACE}" --wait >&2
     info "fx-rates removed. Its APM data remains until it ages out of the time picker."
+  elif kctl get deployment "${RELEASE}" >/dev/null 2>&1; then
+    # Applied by the demo-control-panel "Onboard" button (no Helm release record).
+    info "Removing ${RELEASE} objects applied by demo-control-panel from ${NAMESPACE}..."
+    kctl delete deployment,service,serviceaccount "${RELEASE}" --ignore-not-found --wait >&2
+    info "fx-rates removed. Its APM data remains until it ages out of the time picker."
   else
-    info "Helm release ${RELEASE} is not installed in ${NAMESPACE}; nothing to do."
+    info "${RELEASE} is not installed in ${NAMESPACE}; nothing to do."
   fi
 }
 

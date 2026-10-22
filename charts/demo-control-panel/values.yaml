@@ -1,0 +1,22 @@
+image:
+  repository: demo-control-panel
+  tag: latest
+imagePullPolicy: IfNotPresent
+
+# Source CIDRs allowed through the LoadBalancer. Required; there is no open default.
+allowedCidrs: []
+# Extra AWS tags for the load balancer as "k1=v1,k2=v2". Terraform passes the org tags.
+loadBalancerTags: ""
+
+kibanaUrl: ""
+environment: banking-demo
+baseVersion: "1.4.2"
+badVersion: "2.0.0"
+defaultLoadRate: 5
+
+# fx-rates objects as a JSON array, rendered from charts/fx-rates by Terraform.
+fxRatesManifests: "[]"
+
+resources:
+  requests: { cpu: 20m, memory: 48Mi }
+  limits: { cpu: 200m, memory: 128Mi }

@@ -5,14 +5,19 @@ A short checklist of the steps for each demo scenario. For the full talk track, 
 
 Run scripts from the repo root. Present as `demo-sre`. Time picker: Last 15 minutes.
 
+Every scenario step that uses `fault-inject.sh`, `onboard-service.sh`, `generate-load.sh` or a plain
+`reset-demo.sh` has a matching button in the demo control panel
+(`terraform -chdir=terraform output -raw control_panel_url`). Use the page instead of a terminal while presenting.
+
 ## Prep (T-60 min)
 
 1. `scripts/validate.sh` - all checks pass.
 2. `scripts/reset-demo.sh --full` - faults off, fx-rates removed, SLOs reset, alerts cleared.
 3. Log in to three browser profiles: `elastic`, `demo-sre`, `demo-viewer`
    (`terraform -chdir=terraform output -raw <user>_password`).
-4. Open tabs: Service inventory, Service map, SLOs, Alerts, Discover (ES|QL), Dashboards.
-5. About 15 min before scenario 4, start `scripts/slo-breach.sh --keep-fault`. This fault also drives scenarios 2 and 3.
+4. Open tabs: demo control panel, Service inventory, Service map, SLOs, Alerts, Discover (ES|QL), Dashboards.
+5. About 15 min before scenario 4, start `scripts/slo-breach.sh --keep-fault` (or control panel > SLO breach **Start**, which skips
+   the detection-delay measurement). This fault also drives scenarios 2 and 3.
 
 ## 1. Self-service K8s onboarding (~7 min)
 
@@ -21,7 +26,7 @@ Run scripts from the repo root. Present as `demo-sre`. Time picker: Last 15 minu
 1. Service inventory: 4 services, no OTel SDK in any image.
 2. Show the `instrumentation.opentelemetry.io/inject-python` annotation in
    `charts/fx-rates/templates/deployment.yaml`.
-3. `scripts/onboard-service.sh` (a Helm install, as the team's pipeline would run it).
+3. Control panel > **Onboard** (or `scripts/onboard-service.sh`, a Helm install, as the team's pipeline would run it).
 4. Infrastructure > Kubernetes, namespace `banking`: the new pod appears.
 5. Service inventory: `fx-rates` appears. Service map: a new `transfer-service -> fx-rates` edge.
 6. SLOs: the existing SLO, grouped by `service.name`, now has an `fx-rates` instance.
@@ -32,7 +37,7 @@ Run scripts from the repo root. Present as `demo-sre`. Time picker: Last 15 minu
 **Point:** go from the alert to the evidence in a few clicks, across services written in four languages.
 
 Start the fault 5 min ahead. Use `bad-version` for the correlations story and `slow-db` for the trace story:
-`scripts/fault-inject.sh bad-version on` / `scripts/fault-inject.sh slow-db on`
+Control panel > Bad release / Slow DB **On** (or `scripts/fault-inject.sh bad-version on` / `slow-db on`).
 
 1. **Alert:** Observability > Alerts > open the `transfer-service` alert.
 2. **Service map:** the affected node shows alert, SLO and anomaly badges.
@@ -69,7 +74,7 @@ Started in Prep: `scripts/slo-breach.sh --keep-fault` (3000 ms latency on `trans
 5. `results/slo-breach-<ts>.json`: `detection_delay_seconds` (typically 5-10 min).
 6. **Drill-through:** from the SLO, open the underlying events (APM service page or View in Discover).
 
-End: `scripts/fault-inject.sh latency off`.
+End: control panel > SLO breach **Stop** (or `scripts/fault-inject.sh latency off`).
 
 ## 5. Observability as code (~7 min)
 
@@ -86,5 +91,6 @@ Afterwards, revert the edits: `git checkout -- dashboards/ && terraform -chdir=t
 
 ## Reset and teardown
 
-- Between runs: `scripts/reset-demo.sh` (add `--full` for a clean SLO budget and no active alerts).
+- Between runs: control panel > **Reset demo** or `scripts/reset-demo.sh` (use `--full` for a clean SLO budget and no
+  active alerts; the panel cannot do that part).
 - After the meeting: `terraform -chdir=terraform destroy` (before the `keep-until` tag date).

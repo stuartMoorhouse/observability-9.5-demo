@@ -21,3 +21,4 @@ tags = {
 # image_platform           = "linux/arm64"  # or linux/amd64; also sets the EKS node architecture
 # loadgen_rate             = 5
 # eks_api_allowed_cidrs    = []  # empty = your current public IP /32
+# control_panel_allowed_cidrs = []  # demo-control-panel load balancer; empty = your current public IP /32
