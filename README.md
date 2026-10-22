@@ -152,22 +152,6 @@ Each criterion prints PASS, FAIL or SKIP with detail, and the run exits
 non-zero on any FAIL. Scenario checks turn faults off when they finish.
 Criterion 14 (clean destroy) is checked by running `terraform destroy`.
 
-## Cost estimate
-
-Rough hourly figures for eu-north-1. Treat these as estimates only; check
-current AWS and Elastic Cloud pricing for your account.
-
-| Component | Approx. per hour |
-|---|---|
-| EKS control plane | $0.10 |
-| 2 x m6i.large spot nodes + EBS | $0.08 - $0.12 |
-| fck-nat (t4g.nano) + EIP | ~$0.01 |
-| ECR, CloudWatch, data transfer | < $0.05 |
-| Elastic Cloud Hosted: 2-zone hot tier (2 x 4 GB), dedicated ML node, 2-zone Kibana, Enterprise | $1.20 - $1.80 |
-| **Total (estimate)** | **~$1.50 - $2.10 per hour (~$35 - $50 per day)** |
-
-Destroy the environment when it is not in use.
-
 ## Teardown
 
 ```bash
