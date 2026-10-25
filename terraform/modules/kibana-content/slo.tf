@@ -8,9 +8,9 @@
 # types are not used with OTel-native data.
 #
 # Window/budget: 7d rolling, occurrences budgeting, 99 % target. With the burn-rate windows in rules.tf
-# (fastest: 15m long / 5m short at 14.4x) a fault that makes ~all transactions bad crosses the threshold
-# after ~2.2 min of bad data in the long window; adding SLO transform frequency (1m) + sync delay (1m) and
-# the 1m rule interval gives an expected detection delay of ~4-6 min, inside the ~10 min slo-breach.sh budget.
+# (fastest: 5m long / 1m short at 14.4x) a fault that makes ~all transactions bad crosses the threshold
+# after ~45 s of bad data in the long window; adding SLO transform frequency (1m) + sync delay (1m) and
+# the 1m rule interval gives an expected detection delay of ~4 min (measured 235-260 s).
 
 locals {
   slos = {

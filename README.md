@@ -175,15 +175,17 @@ See [docs/runbook.md](docs/runbook.md). Script summary:
 | `scripts/slo-breach.sh [--keep-fault]` | Scenario 4: drive a burn-rate breach, write `results/slo-breach-<ts>.json` |
 | `scripts/export-dashboard.sh <id\|title>` | Scenario 5: export a UI dashboard to `dashboards/<slug>.json` |
 | `scripts/generate-load.sh <rate\|start\|stop\|status>` | Control the in-cluster k6 load generator |
-| `scripts/reset-demo.sh` | Faults off, baseline release, remove fx-rates, restore load. `--full` also resets SLOs, redeploys dashboards from Git and waits for alerts to clear |
+| `scripts/reset-demo.sh` | Faults off, baseline release, remove fx-rates, restore load. `--full` also resets SLOs, redeploys dashboards from Git and clears active alerts (waits up to 6 min, then untracks) |
 | `scripts/validate.sh [--scenarios] [--slo-breach]` | Acceptance checks, writes `results/validate-<ts>.json` |
+| `scripts/test-runbook.sh [--no-slo-breach]` | End-to-end runbook test: reset, validate.sh, runbook-only checks (log correlation per fault, runbook ES\|QL queries, control panel), reset again (~25-35 min), writes `results/test-runbook-<ts>.json` |
 
 ## Validation
 
 ```bash
 scripts/validate.sh                 # read-only checks (criteria 2-5, 10-13)
 scripts/validate.sh --scenarios     # adds 6-8: onboarding and fault scenarios (~15 min)
-scripts/validate.sh --all           # adds 9: SLO breach (up to 30 min more)
+scripts/validate.sh --all           # adds 9: SLO breach (~3-5 min more)
+scripts/test-runbook.sh             # everything above plus runbook-only checks, with a reset before and after
 ```
 
 Each criterion prints PASS, FAIL or SKIP with detail, and the run exits

@@ -71,7 +71,7 @@ Started in Prep: `scripts/slo-breach.sh --keep-fault` (3000 ms latency on `trans
 2. SLO details: SLI chart, budget burn-down and the multi-window burn-rate rule.
 3. Alerts: open the burn-rate alert (burn rate, windows, reason).
 4. Show the email notification and the email connector's execution log.
-5. `results/slo-breach-<ts>.json`: `detection_delay_seconds` (typically 5-10 min).
+5. `results/slo-breach-<ts>.json`: `detection_delay_seconds` (typically ~4 min).
 6. **Drill-through:** from the SLO, open the underlying events (APM service page or View in Discover).
 
 End: control panel > SLO breach **Stop** (or `scripts/fault-inject.sh latency off`).

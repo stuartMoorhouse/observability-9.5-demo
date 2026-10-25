@@ -232,18 +232,22 @@ check_5() {
   metrics="$(esql_count_by 'metrics-*.otel-*')"
   traces="$(esql_count_by 'traces-*.otel-*')"
   for svc in "${BASE_SERVICES[@]}"; do
-    local l m t tid linked="no"
+    local l m t tids tid tc linked="no"
     l="$(jq -r --arg s "${svc}" '.[$s] // 0' <<<"${logs}")"
     m="$(jq -r --arg s "${svc}" '.[$s] // 0' <<<"${metrics}")"
     t="$(jq -r --arg s "${svc}" '.[$s] // 0' <<<"${traces}")"
     # severity_text excludes span exception events, which carry a trace.id but are not app logs.
-    tid="$(esql_rows "FROM logs-*.otel-* | WHERE @timestamp > ${WINDOW} AND service.name == \"${svc}\" AND trace.id IS NOT NULL AND severity_text IS NOT NULL | KEEP trace.id | LIMIT 1" 2>/dev/null |
-      jq -r '.[0]["trace.id"] // empty' 2>/dev/null || true)"
-    if [[ -n "${tid}" ]]; then
-      local tc
+    # Logs from the last minute are skipped: a log written mid-request is indexed before its spans,
+    # which are only exported when the request ends. Up to three traces are tried.
+    tids="$(esql_rows "FROM logs-*.otel-* | WHERE @timestamp > ${WINDOW} AND @timestamp < NOW() - 1 minute AND service.name == \"${svc}\" AND trace.id IS NOT NULL AND severity_text IS NOT NULL | KEEP trace.id | LIMIT 3" 2>/dev/null |
+      jq -r '.[]["trace.id"]' 2>/dev/null || true)"
+    for tid in ${tids}; do
       tc="$(esql_rows "FROM traces-*.otel-* | WHERE trace.id == \"${tid}\" | STATS c = COUNT(*)" 2>/dev/null | jq -r '.[0].c // 0' 2>/dev/null || echo 0)"
-      ((tc > 0)) && linked="yes (trace.id ${tid:0:8}... -> ${tc} spans)"
-    fi
+      if ((tc > 0)); then
+        linked="yes (trace.id ${tid:0:8}... -> ${tc} spans)"
+        break
+      fi
+    done
     details+=("${svc}: logs=${l} metrics=${m} traces=${t} log->trace=${linked}")
     ((l > 0)) || problems+=("${svc}: no logs")
     ((m > 0)) || problems+=("${svc}: no metrics")
@@ -431,7 +435,8 @@ check_10() {
   [[ -n "${rule_id}" ]] || { fail "terraform output burn_rate_rule_id is empty"; return; }
   rule="$(kb_api GET "/api/alerting/rule/$(uri_encode "${rule_id}")" 2>/dev/null)" || { fail "rule ${rule_id} not readable via /api/alerting/rule"; return; }
   email_actions="$(jq '[.actions[]? | select(.connector_type_id == ".email")] | length' <<<"${rule}")"
-  ((email_actions > 0)) || { fail "burn-rate rule has no .email action"; return; }
+  # The email action exists only when alert_email_recipients is set (kibana-content send_email).
+  ((email_actions > 0)) || { skip "burn-rate rule has no .email action: alert_email_recipients is empty in terraform/local.auto.tfvars"; return; }
 
   # Connector execution log: Kibana event log (actions:execute events related to the rule).
   body="$(jq -nc --arg r "${rule_id}" '{

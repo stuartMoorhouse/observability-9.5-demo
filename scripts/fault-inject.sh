@@ -86,8 +86,8 @@ set_release() {
 
 expect() {
   case "$1" in
-    latency) info "Expect (from now, incl. ConfigMap propagation): latency threshold alert on transfer-service in ~2-5 min (rule runs every minute); SLO burn-rate alert in ~5-10 min if left on." ;;
-    errors) info "Expect (from now, incl. ConfigMap propagation): fraud-check failed transaction rate rises within ~1 min; error-rate alert in ~2-5 min; APM correlations meaningful after ~3-5 min." ;;
+    latency) info "Expect (from now, incl. ConfigMap propagation): latency threshold alert on transfer-service in ~1-2 min (rule runs every minute); SLO burn-rate alert in ~4 min if left on." ;;
+    errors) info "Expect (from now, incl. ConfigMap propagation): fraud-check failed transaction rate rises within ~1 min; error-rate alert in ~1-2 min; APM correlations meaningful after ~3-5 min." ;;
     slow-db) info "Expect (from now, incl. ConfigMap propagation): slow DB span on accounts-ledger in trace waterfalls within ~1 min; latency alerts on accounts-ledger/transfer-service in ~5 min." ;;
     bad-version) info "Expect: service.version ${BAD_VERSION} visible in APM after rollout (~1-2 min); latency/error alerts in ~3-5 min; correlations rank version ${BAD_VERSION} after ~5 min." ;;
   esac

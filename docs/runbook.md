@@ -23,7 +23,14 @@ and `reset-demo.sh --full` still need the terminal. See the README,
 ## Before the meeting (T-60 min)
 
 1. `scripts/validate.sh` - all read-only checks PASS (criterion 9/10 may SKIP).
-2. `scripts/reset-demo.sh` - baseline state, fx-rates removed.
+   For a full rehearsal by script, run `scripts/test-runbook.sh` instead
+   (~25-35 min): it resets, drives every scenario through the APIs, checks
+   the runbook's ES|QL queries and log correlation, and resets again. It
+   lists the UI-only steps to check by eye at the end.
+2. `scripts/reset-demo.sh --full` - baseline state, fx-rates removed, active
+   alerts cleared. You can start presenting as soon as it finishes. It takes
+   ~30 s, or up to ~6 min when a fault ran in the last few minutes (it waits
+   for burn-rate alerts to recover so they do not fire again mid-demo).
 3. `scripts/fault-inject.sh status` - every fault off, `APP_VERSION=1.4.2`.
 4. Log in to Kibana in three browser profiles:
    - `elastic` (superuser, for setup only) - `terraform output -raw elastic_password`
@@ -38,6 +45,15 @@ and `reset-demo.sh --full` still need the terminal. See the README,
 
 Timing guide: the full flow is ~45 minutes. Scenarios 2 and 4 share one fault
 window, so start `scripts/slo-breach.sh --keep-fault` early (see scenario 4).
+
+Quick demo (~15 min): scenarios 1 and 2 only. Inject the scenario 2 fault
+when you start scenario 1; by the time onboarding is done the alert and
+correlations are ready.
+
+Rule timings are tuned for demos (`terraform/modules/kibana-content/rules.tf`):
+threshold rules look at the last 1 minute, the fastest burn-rate window is
+5 min long / 1 min short, and every short window is 1 min. Alerts
+fire and recover in minutes. These are not production settings.
 
 ---
 
@@ -73,12 +89,13 @@ Pick one fault per run. Recommended order for a first meeting: `bad-version`
 
 | Fault | Command | Visible after |
 |---|---|---|
-| Latency on transfer-service | `scripts/fault-inject.sh latency on 1500` | alert ~2-5 min |
-| Errors in fraud-check | `scripts/fault-inject.sh errors on 30` | error rate ~1 min, alert ~2-5 min |
-| Slow DB in accounts-ledger | `scripts/fault-inject.sh slow-db on` | slow DB spans ~1 min |
-| Bad release of transfer-service | `scripts/fault-inject.sh bad-version on` | new version ~1-2 min, correlations ~5 min |
+| Latency on transfer-service | `scripts/fault-inject.sh latency on 1500` | alert ~1-2 min |
+| Errors in fraud-check | `scripts/fault-inject.sh errors on 30` | error rate ~1 min, alert ~1-2 min |
+| Slow DB in accounts-ledger | `scripts/fault-inject.sh slow-db on` | slow DB spans and WARN logs ~1 min |
+| Bad release of transfer-service | `scripts/fault-inject.sh bad-version on` | new version ~1-2 min, correlations ~3-5 min |
 
-Start the fault 5 minutes before you need it.
+Start the fault 3-5 minutes before you need it (for the quick demo: at the
+start of scenario 1).
 
 | Step | Action | Talk track |
 |---|---|---|
@@ -172,8 +189,8 @@ point that the restriction is code-reviewed.
 **Message:** alert on what customers feel (the error budget), not on noisy
 thresholds, and measure how fast the platform detects a real breach.
 
-Lead time: start the breach ~15 minutes before this scenario, ideally at the
-start of scenario 2:
+Lead time: start the breach ~5 minutes before this scenario, for example at
+the start of scenario 3:
 
 ```bash
 scripts/slo-breach.sh --keep-fault
@@ -183,8 +200,8 @@ It records the fault start (UTC), injects 3000 ms latency on
 `transfer-service`, polls the SLO alerts index every 15 s for the burn-rate
 rule from `terraform output burn_rate_rule_id`, and writes
 `results/slo-breach-<timestamp>.json` with `fault_start`, `alert_detected`
-and `detection_delay_seconds`. Typical delay: 5-10 minutes (depends on the
-rule's short window and evaluation interval). Without `--keep-fault` the fault
+and `detection_delay_seconds`. Typical delay: ~4 minutes (5 min / 1 min
+fast-burn window, SLO transform delay, 1 min rule interval). Without `--keep-fault` the fault
 is turned off when the script exits.
 
 | Step | Action | Talk track |
@@ -228,9 +245,9 @@ scripts/reset-demo.sh          # faults off, APP_VERSION=1.4.2 BAD_RELEASE=false
 scripts/fault-inject.sh status
 ```
 
-- Active alerts recover on their own after the next healthy rule evaluations;
-  burn-rate alerts take longer (short window must clear, typically 5-15 min).
-  Wait for recovery before running `scripts/slo-breach.sh` again.
+- Active alerts recover on their own: threshold alerts ~1-2 min after the
+  fault stops, burn-rate alerts ~5-6 min. Wait for recovery (or use `--full`)
+  before running `scripts/slo-breach.sh` again.
 - The consumed SLO error budget only returns as the time window rolls
   forward. Use `--full` for a clean budget.
 - Set the time picker back to Last 15 minutes to show the healthy baseline.
@@ -239,10 +256,14 @@ Before a rehearsal or the meeting:
 
 ```bash
 scripts/reset-demo.sh --full   # also resets both SLOs, redeploys dashboards from Git,
-                               # and waits (up to 15 min) until no alerts are active
+                               # waits (up to 6 min) for alerts to recover, then
+                               # untracks any alert still active
 ```
 
-`--no-wait` skips the alert wait; `--wait-timeout MIN` changes it. Alert
+Untracked alerts leave the Alerts page at once (they stay in alert history).
+`--no-wait` untracks straight away; right after a fault an alert can then
+fire once more and recover within ~5-6 min. `--wait-timeout MIN` changes the
+wait. Alert
 history, ML anomaly results and historical telemetry are kept.
 
 After the meeting:

@@ -249,6 +249,25 @@ esql_rows() {
   jq -c '[.values[] as $r | [.columns, $r] | transpose | map({(.[0].name): .[1]}) | add // {}]' <<<"${raw}"
 }
 
+# untrack_demo_alerts  -> marks every active alert of the demo rules (tag banking-demo) as untracked by
+# disabling each rule with untrack=true and enabling it again. Clears the Alerts page at once instead of
+# waiting for recovery. A rule whose lookback window still holds fault data fires again on its next run.
+untrack_demo_alerts() {
+  local ids id failed=0
+  ids="$(kb_api GET "/api/alerting/rules/_find?per_page=100&filter=$(uri_encode 'alert.attributes.tags:"banking-demo"')" |
+    jq -r '.data[] | select(.enabled) | .id')" || return 1
+  for id in ${ids}; do
+    if kb_api POST "/api/alerting/rule/$(uri_encode "${id}")/_disable" '{"untrack":true}' >/dev/null &&
+      kb_api POST "/api/alerting/rule/$(uri_encode "${id}")/_enable" >/dev/null; then
+      info "  Rule ${id}: active alerts untracked"
+    else
+      error "  Rule ${id}: untrack failed (check that the rule is enabled in Kibana)"
+      failed=1
+    fi
+  done
+  return "${failed}"
+}
+
 # check_endpoint NAME URL  -> dies with guidance if the URL is unreachable.
 # Any HTTP status (including 401) counts as reachable.
 check_endpoint() {

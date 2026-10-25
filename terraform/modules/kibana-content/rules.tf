@@ -16,13 +16,16 @@
 locals {
   # Burn-rate windows for a 7d SLO window. maxBurnRateThreshold = SLO window / long window (budget fully
   # consumed inside the long window), mirroring what the Kibana rule UI computes.
+  # Demo tuning: the fast window is 5m/1m (not the usual 1h/5m) and every short window is 1m, so an alert
+  # fires ~4 min after a fault starts and recovers ~5 min after it stops (short window plus ~3-4 min SLO
+  # transform and rule delay, measured). This keeps reset-demo.sh --full short. Not production settings.
   slo_window_minutes = 7 * 24 * 60
 
   burn_rate_windows = [
-    { id = "fast-15m", threshold = 14.4, long = 15, short = 5, group = "slo.burnRate.alert" },
-    { id = "page-1h", threshold = 6, long = 60, short = 5, group = "slo.burnRate.high" },
-    { id = "ticket-6h", threshold = 3, long = 360, short = 30, group = "slo.burnRate.medium" },
-    { id = "ticket-24h", threshold = 1, long = 1440, short = 120, group = "slo.burnRate.low" },
+    { id = "fast-5m", threshold = 14.4, long = 5, short = 1, group = "slo.burnRate.alert" },
+    { id = "page-1h", threshold = 6, long = 60, short = 1, group = "slo.burnRate.high" },
+    { id = "ticket-6h", threshold = 3, long = 360, short = 1, group = "slo.burnRate.medium" },
+    { id = "ticket-24h", threshold = 1, long = 1440, short = 1, group = "slo.burnRate.low" },
   ]
 
   burn_rate_email_groups = ["slo.burnRate.alert", "slo.burnRate.high"]
@@ -93,7 +96,7 @@ resource "elasticstack_kibana_alerting_rule" "latency" {
     criteria = [{
       comparator = ">"
       threshold  = [local.latency_threshold_us]
-      timeSize   = 5
+      timeSize   = 1 # demo tuning: alert ~1-2 min after a fault, recover ~1-2 min after
       timeUnit   = "m"
       metrics = [{
         name    = "A"
@@ -130,7 +133,7 @@ resource "elasticstack_kibana_alerting_rule" "error_rate" {
     criteria = [{
       comparator = ">"
       threshold  = [var.error_rate_threshold_pct]
-      timeSize   = 5
+      timeSize   = 1 # demo tuning: alert ~1-2 min after a fault, recover ~1-2 min after
       timeUnit   = "m"
       metrics = [
         {

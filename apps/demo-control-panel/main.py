@@ -57,11 +57,11 @@ COLLECTION = {
 }
 
 EXPECT = {
-    "latency": "Latency threshold alert on transfer-service in ~2-5 min; SLO burn-rate alert in ~5-10 min if left on.",
-    "errors": "fraud-check failure rate rises within ~1 min; error-rate alert in ~2-5 min; correlations meaningful after ~3-5 min.",
+    "latency": "Latency threshold alert on transfer-service in ~1-2 min; SLO burn-rate alert in ~4 min if left on.",
+    "errors": "fraud-check failure rate rises within ~1 min; error-rate alert in ~1-2 min; correlations meaningful after ~3-5 min.",
     "slow-db": "Slow DB span on accounts-ledger in trace waterfalls within ~1 min; latency alerts in ~5 min.",
     "bad-version": f"service.version {BAD_VERSION} visible in APM after the rollout (~1-2 min); alerts in ~3-5 min; correlations rank {BAD_VERSION} after ~5 min.",
-    "slo-breach": "Burn-rate alert typically 5-10 min after the fault starts.",
+    "slo-breach": "Burn-rate alert typically ~4 min after the fault starts.",
     "fx-onboard": "Pod ready in ~30-60 s; fx-rates in the service inventory and service map within ~1-2 min.",
 }
 

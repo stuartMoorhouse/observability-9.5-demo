@@ -12,8 +12,11 @@
 # With --full (rehearsal / pre-meeting reset), additionally:
 # - resets the latency and availability SLOs (restores the full error budget)
 # - redeploys every dashboard in dashboards/ from Git (discards UI edits)
-# - waits until no observability alerts are active (default up to 15 min,
-#   skip with --no-wait), so the next scenario run starts from a clean state
+# - waits until no observability alerts are active (default up to 6 min; with
+#   the demo rule windows they recover ~5-6 min after the last fault), then
+#   untracks any alert still active, so the next run starts from a clean
+#   Alerts page. --no-wait untracks at once; an alert whose rule window still
+#   holds fault data may then fire again within ~1 min and recover shortly after.
 #
 # Traces, logs, metrics, alert history and ML anomaly results are never deleted
 # (resetting the ML job would also throw away its learned baseline).
@@ -29,7 +32,7 @@ RATE="${DEFAULT_LOAD_RATE}"
 KEEP_FX=false
 FULL=false
 WAIT_ALERTS=true
-WAIT_TIMEOUT_MIN=15
+WAIT_TIMEOUT_MIN=6
 
 usage() {
   print_header "${BASH_SOURCE[0]}"
@@ -51,7 +54,7 @@ is_int "${RATE}" || die "--rate must be an integer"
 is_int "${WAIT_TIMEOUT_MIN}" || die "--wait-timeout must be an integer (minutes)"
 
 if [[ "${FULL}" == "true" ]]; then
-  TOTAL=$([[ "${WAIT_ALERTS}" == "true" ]] && echo 6 || echo 5)
+  TOTAL=6
 else
   TOTAL=3
 fi
@@ -108,7 +111,7 @@ wait_for_alert_recovery() {
       return 0
     fi
     if (($(epoch_now) >= deadline)); then
-      warn "  ${count} alert(s) still active after ${WAIT_TIMEOUT_MIN} min. Check Observability > Alerts."
+      info "  ${count} alert(s) still active after ${WAIT_TIMEOUT_MIN} min, untracking them"
       return 1
     fi
     info "  ${count} alert(s) still active, waiting for recovery..."
@@ -141,8 +144,8 @@ if [[ "${FULL}" != "true" ]]; then
 
 Reset complete. Notes:
   - Active alerts recover on their own once rules evaluate healthy data
-    (threshold rules ~1-5 min; SLO burn-rate alerts after the short window
-    clears, typically 5-15 min). Wait for recovery before re-running
+    (threshold rules ~1-2 min; SLO burn-rate alerts ~5-6 min). Use --full to
+    clear them at once. Wait for recovery before re-running
     scripts/slo-breach.sh, otherwise no new alert is created.
   - The SLO error budget consumed by a breach is only restored as the SLO
     time window rolls forward. Use --full to reset the SLOs and dashboards.
@@ -161,8 +164,11 @@ info "5/${TOTAL} Redeploying dashboards from Git"
 redeploy_dashboards || status=1
 
 if [[ "${WAIT_ALERTS}" == "true" ]]; then
-  info "6/${TOTAL} Waiting for active alerts to recover (up to ${WAIT_TIMEOUT_MIN} min)"
-  wait_for_alert_recovery || status=1
+  info "6/${TOTAL} Waiting for active alerts to recover (up to ${WAIT_TIMEOUT_MIN} min), then untracking the rest"
+  wait_for_alert_recovery || untrack_demo_alerts || status=1
+else
+  info "6/${TOTAL} Untracking active alerts (--no-wait)"
+  untrack_demo_alerts || status=1
 fi
 
 echo
