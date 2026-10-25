@@ -41,6 +41,12 @@ variable "hot_size" {
   default     = "4g"
 }
 
+variable "frozen_size" {
+  description = "Frozen tier memory (single zone, autoscaling off)"
+  type        = string
+  default     = "4g"
+}
+
 variable "ml_size" {
   description = "Dedicated ML node memory (single zone, autoscaling off)"
   type        = string

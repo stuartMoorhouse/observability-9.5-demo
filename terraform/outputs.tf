@@ -85,3 +85,13 @@ output "latency_rule_id" {
   description = "Latency threshold rule ID"
   value       = module.kibana_content.latency_rule_id
 }
+
+output "snapshot_bucket" {
+  description = "S3 bucket backing the demo-s3-repo snapshot repository"
+  value       = module.data_lifecycle.bucket_name
+}
+
+output "ilm_policy" {
+  description = "ILM policy applied to all logs, metrics and traces"
+  value       = module.data_lifecycle.ilm_policy
+}

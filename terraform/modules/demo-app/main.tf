@@ -288,13 +288,13 @@ resource "aws_wafv2_web_acl" "control_panel" {
   }
 }
 
-data "aws_cloudfront_cache_policy" "caching_disabled" {
-  name = "Managed-CachingDisabled"
-}
-
-# Forwards Content-Type (the app requires application/json on POST) and the query string.
-data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
-  name = "Managed-AllViewerExceptHostHeader"
+# AWS managed policy IDs are global constants. Looked up via data sources they get
+# deferred to apply time (module depends_on), which trips an AWS provider
+# "inconsistent final plan" bug on the distribution.
+locals {
+  cache_policy_caching_disabled = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+  # Forwards Content-Type (the app requires application/json on POST) and the query string.
+  origin_request_policy_all_viewer_except_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
 }
 
 resource "aws_cloudfront_distribution" "control_panel" {
@@ -327,8 +327,8 @@ resource "aws_cloudfront_distribution" "control_panel" {
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods           = ["GET", "HEAD"]
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    cache_policy_id          = local.cache_policy_caching_disabled
+    origin_request_policy_id = local.origin_request_policy_all_viewer_except_host
     compress                 = true
   }
 

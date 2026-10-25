@@ -173,6 +173,15 @@ module "elastic_cloud" {
   tags                       = var.tags
 }
 
+# S3 snapshot repository in the AWS account plus the demo-logs ILM policy
+# (hot -> frozen -> delete) for all logs, metrics and traces.
+module "data_lifecycle" {
+  source = "./modules/data-lifecycle"
+
+  prefix        = var.prefix
+  deployment_id = module.elastic_cloud.deployment_id
+}
+
 module "otel_k8s" {
   source = "./modules/otel-k8s"
 

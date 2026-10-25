@@ -41,7 +41,7 @@ The click path and talk track for each scenario are in
                                         | OTLP -> Elasticsearch (API key)
                                         v
  +-------------------------------------------------------------------------------+
- |  Elastic Cloud Hosted 9.5 (AWS eu-north-1, 2 zones)                           |
+ |  Elastic Cloud Hosted 9.5 (AWS eu-north-1, 3 zones)                           |
  |   Elasticsearch hot tier + dedicated ML node, Kibana                          |
  |   Terraform-managed content: SLO (groupBy service.name), burn-rate and        |
  |   threshold rules, email connector, ML anomaly job, demo-sre / demo-viewer    |

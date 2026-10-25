@@ -44,7 +44,15 @@ resource "ec_deployment" "this" {
     hot = {
       size          = var.hot_size
       size_resource = "memory"
-      zone_count    = 2
+      zone_count    = 3
+      autoscaling   = {}
+    }
+
+    # Frozen tier for the ILM frozen phase (searchable snapshots from the S3 repo).
+    frozen = {
+      size          = var.frozen_size
+      size_resource = "memory"
+      zone_count    = 1
       autoscaling   = {}
     }
 
@@ -59,7 +67,7 @@ resource "ec_deployment" "this" {
   kibana = {
     size          = var.kibana_size
     size_resource = "memory"
-    zone_count    = 2
+    zone_count    = 3
   }
 
   # No integrations_server: EDOT collectors write directly to Elasticsearch
