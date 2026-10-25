@@ -236,7 +236,8 @@ check_5() {
     l="$(jq -r --arg s "${svc}" '.[$s] // 0' <<<"${logs}")"
     m="$(jq -r --arg s "${svc}" '.[$s] // 0' <<<"${metrics}")"
     t="$(jq -r --arg s "${svc}" '.[$s] // 0' <<<"${traces}")"
-    tid="$(esql_rows "FROM logs-*.otel-* | WHERE @timestamp > ${WINDOW} AND service.name == \"${svc}\" AND trace.id IS NOT NULL | KEEP trace.id | LIMIT 1" 2>/dev/null |
+    # severity_text excludes span exception events, which carry a trace.id but are not app logs.
+    tid="$(esql_rows "FROM logs-*.otel-* | WHERE @timestamp > ${WINDOW} AND service.name == \"${svc}\" AND trace.id IS NOT NULL AND severity_text IS NOT NULL | KEEP trace.id | LIMIT 1" 2>/dev/null |
       jq -r '.[0]["trace.id"] // empty' 2>/dev/null || true)"
     if [[ -n "${tid}" ]]; then
       local tc

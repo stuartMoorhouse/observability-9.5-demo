@@ -151,6 +151,22 @@ def healthz():
     return {"status": "ok"}
 
 
+SLOW_QUERY_MS = 500
+
+
+def _warn_if_slow(what: str, started: float, fields: dict) -> None:
+    # Logged inside the request span, so the warning is correlated with the slow trace.
+    elapsed_ms = (time.monotonic() - started) * 1000
+    if elapsed_ms >= SLOW_QUERY_MS:
+        log.warning(
+            "Slow ledger query: %s took %d ms (threshold %d ms)",
+            what,
+            elapsed_ms,
+            SLOW_QUERY_MS,
+            extra={"fields": {**fields, "db.duration_ms": round(elapsed_ms)}},
+        )
+
+
 @app.get("/ledger/accounts/{account_id}/balance")
 def balance(account_id: str):
     assert pool is not None
@@ -159,8 +175,10 @@ def balance(account_id: str):
         sql = "SELECT balance, currency, pg_sleep(0.8) FROM accounts WHERE id = %s"
     else:
         sql = "SELECT balance, currency FROM accounts WHERE id = %s"
+    started = time.monotonic()
     with pool.connection() as conn:
         row = conn.execute(sql, (account_id,)).fetchone()
+    _warn_if_slow("balance lookup", started, {"ledger.account_id": account_id})
     if row is None:
         raise HTTPException(status_code=404, detail="account not found")
     return {"accountId": account_id, "balance": float(row[0]), "currency": row[1].strip()}
@@ -173,10 +191,12 @@ def _post(entry: Posting, direction: str) -> dict:
         with conn.transaction():
             if faults.slow_db():
                 # Unindexed scan of the ledger plus a sleep to make the DB the bottleneck.
+                started = time.monotonic()
                 conn.execute(
                     "SELECT count(*), pg_sleep(0.8) FROM ledger_entries WHERE reference LIKE %s",
                     (f"%{entry.reference[-6:]}%",),
                 )
+                _warn_if_slow("duplicate-reference scan", started, {"ledger.reference": entry.reference})
             row = conn.execute(
                 "UPDATE accounts SET balance = balance + %s WHERE id = %s RETURNING balance, currency",
                 (sign * entry.amount, entry.accountId),

@@ -4,7 +4,8 @@ using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
+// Do not call ClearProviders(): it also removes the OpenTelemetry logger provider that EDOT .NET
+// auto-instrumentation registers, and logs then never reach Elastic over OTLP (no log correlation).
 // JSON logs on stdout; the TraceId/SpanId of the current Activity are included as scope fields.
 builder.Logging.AddJsonConsole(o =>
 {

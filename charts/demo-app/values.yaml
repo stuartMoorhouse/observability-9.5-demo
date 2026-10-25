@@ -27,6 +27,9 @@ services:
     env:
       ACCOUNTS_LEDGER_URL: http://accounts-ledger:8080
       TRANSFER_SERVICE_URL: http://transfer-service:8080
+      # EDOT Node only injects trace_id/span_id into pino records by default; log sending over
+      # OTLP is opt-in. Needed for log correlation in APM and Discover.
+      ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING: "true"
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { cpu: 500m, memory: 256Mi }

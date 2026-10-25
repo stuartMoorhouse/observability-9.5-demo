@@ -65,7 +65,8 @@ and the pod init container (`kubectl -n banking get pod -l app.kubernetes.io/nam
 ## Scenario 2: Incident to root cause (~10 min)
 
 **Message:** from an alert to the line of evidence in a few clicks, across
-services written in four languages.
+services written in four languages, with the application logs of every
+request correlated to its trace.
 
 Pick one fault per run. Recommended order for a first meeting: `bad-version`
 (best correlation story), then `slow-db` (best trace waterfall story).
@@ -86,8 +87,10 @@ Start the fault 5 minutes before you need it.
 | 3 | Service overview: latency and failed transaction rate charts. Note the version comparison (bad-version: `2.0.0` appears next to `1.4.2`). | "A new version went out at the same time the regression started." |
 | 4 | Transactions > `POST /transfer` > **Latency correlations** / **Failed transaction correlations**. | "Elastic compares slow or failed transactions with healthy ones and ranks the attributes that explain the difference. Here `service.version: 2.0.0` is at the top." |
 | 5 | Pick a slow sample > **Trace waterfall**. For slow-db, expand the `accounts-ledger` span and the Postgres child span with `pg_sleep`. For errors, open the span error and the `LedgerContractMismatchException` (bad-version) or HTTP 500 exception (errors). | "End-to-end trace across Node, Java, .NET and Python, and the exact span where the time goes." |
-| 6 | From the trace, click **Logs** (or "View logs" on the transaction): logs filtered by `trace.id`. | "The application logs for this exact request. Correlated by trace id, no manual searching." |
-| 7 | Discover > ES|QL. Run the queries below. | "And when the out-of-the-box views are not enough, every signal is queryable with one language." |
+| 6 | Still on the trace sample, open the **Logs** tab (next to Timeline and Metadata). Bad-version: the `ERROR Ledger contract mismatch ...` line from transfer-service. Errors: `Unhandled exception processing /score` from fraud-check. Slow-db: `WARN Slow ledger query ...` from accounts-ledger. Every service in the trace contributes lines (web-banking `transfer processed`, fraud-check `Scored transfer ...`, accounts-ledger `Posted debit ...`). | "These are the application logs for this one request, from all four services and languages. No SDK code in the apps, no log parsing: the EDOT agents write the trace id on every log record." |
+| 7 | Click a log line > open its details > **trace.id** / "View trace" to go from log back to the trace. | "It works both ways: whoever starts from a log line gets the full request in one click." |
+| 8 | Discover, ES|QL `FROM traces-*` (or a `traces-*` data view). Filter to a failing transfer (`service.name == "transfer-service" AND status.code == "Error"`), expand a row. The **Overview** tab shows the trace summary and a **Logs** section with the correlated logs; **Open in Discover** opens them as a log list (technical preview). | "The same correlation in Discover, for teams that live in logs and traces rather than the APM UI." |
+| 9 | Discover > ES|QL. Run the queries below (the second one is all logs for the trace you just opened). | "And when the out-of-the-box views are not enough, every signal is queryable with one language." |
 
 ES|QL examples (paste into Discover, mode ES|QL):
 
@@ -98,6 +101,13 @@ FROM traces-*.otel-*
 | STATS requests = COUNT(*), failures = SUM(failed), p95_ms = PERCENTILE(duration, 95) / 1000000
     BY service.version, bucket = BUCKET(@timestamp, 1 minute)
 | SORT bucket DESC
+```
+
+```esql
+FROM logs-*.otel-*
+| WHERE trace.id == "<paste trace.id from the trace sample>" AND severity_text IS NOT NULL
+| KEEP @timestamp, service.name, severity_text, body.text
+| SORT @timestamp ASC
 ```
 
 ```esql
@@ -117,6 +127,20 @@ FROM metrics-*.otel-*
 
 Field names follow the OTel-native mappings in 9.5 (`duration` is in
 nanoseconds). Adjust if a field is named differently on your stack.
+
+How log correlation works here: each EDOT SDK (Java, .NET, Node.js, Python)
+exports the application's log records over OTLP with `trace_id` and `span_id`
+from the active span. The APM Logs tab and Discover's trace view filter
+`logs-*` on that trace id. Container stdout is also collected by the
+`filelog` receiver, but those copies have no trace id and do not appear in
+the correlated views. Per-service settings:
+
+| Service | Logging library | What turns on log export |
+|---|---|---|
+| transfer-service | Logback (Spring Boot) | EDOT Java default |
+| fraud-check | `ILogger` | EDOT .NET default (do not call `ClearProviders()`) |
+| web-banking | pino | `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true` (opt-in in EDOT Node) |
+| accounts-ledger, fx-rates | `logging` | `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true` |
 
 End of scenario: `scripts/fault-inject.sh <mode> off` (or leave it on for
 scenario 3).
@@ -239,5 +263,6 @@ that date. See README.md, Teardown.
 | kubectl / terraform times out reaching the EKS API | The API only allows the IP you applied from. If your IP changed (new network, VPN), run `terraform apply` again, or set `eks_api_allowed_cidrs` in `terraform/local.auto.tfvars` |
 | kubectl cannot reach `banking` | `aws eks update-kubeconfig --name $(terraform output -raw cluster_name) --region $(terraform output -raw aws_region) --profile $(terraform output -raw aws_profile)` |
 | No traces for a service | Pod has an `opentelemetry-auto-instrumentation-*` init container; `kubectl -n opentelemetry-operator-system get pods`; load generator running |
+| Trace sample Logs tab is empty, or a service is missing from it | `scripts/validate.sh --only 5` (shows `log->trace=no` per service). Check the service's log export setting in the table under scenario 2; the time picker must cover the trace |
 | No new burn-rate alert | A previous alert is still active; wait for recovery or reset the SLO |
 | AI Assistant not responding | Managed LLM connector in Stack Management > Connectors; user is `demo-sre` |
