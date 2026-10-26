@@ -87,33 +87,93 @@ and the pod init container (`kubectl -n banking get pod -l app.kubernetes.io/nam
 services written in four languages, with the application logs of every
 request correlated to its trace.
 
-Pick one fault per run. Recommended order for a first meeting: `bad-version`
-(best correlation story), then `slow-db` (best trace waterfall story).
+Pick one fault per run and start it 3-5 minutes before you need it (for the
+quick demo: at the start of scenario 1). Each fault has its own walkthrough
+below. Recommended order for a first meeting: bad release (best correlation
+story), then slow database (best trace waterfall story).
 
 | Fault | Command | Visible after |
 |---|---|---|
-| Latency on transfer-service | `scripts/fault-inject.sh latency on 1500` | alert ~1-2 min |
-| Errors in fraud-check | `scripts/fault-inject.sh errors on 30` | error rate ~1 min, alert ~1-2 min |
-| Slow DB in accounts-ledger | `scripts/fault-inject.sh slow-db on` | slow DB spans and WARN logs ~1 min |
-| Bad release of transfer-service | `scripts/fault-inject.sh bad-version on` | new version ~1-2 min, correlations ~3-5 min |
+| [Bad release of transfer-service](#bad-release-of-transfer-service) | `scripts/fault-inject.sh bad-version on` | new version ~1-2 min, correlations ~3-5 min |
+| [Slow database in accounts-ledger](#slow-database-in-accounts-ledger) | `scripts/fault-inject.sh slow-db on` | slow DB spans and WARN logs ~1 min |
+| [Latency on transfer-service](#latency-on-transfer-service) | `scripts/fault-inject.sh latency on 1500` | alert ~1-2 min |
+| [Errors in fraud-check](#errors-in-fraud-check) | `scripts/fault-inject.sh errors on 30` | error rate ~1 min, alert ~1-2 min |
 
-Start the fault 3-5 minutes before you need it (for the quick demo: at the
-start of scenario 1).
+Every walkthrough starts in the bank UI (`terraform output -raw web_banking_url`).
+To open the trace of your own transfer: APM > service `web-banking-frontend` >
+transaction `Submit transfer` > latest sample. The browser span is the root,
+above `web-banking`.
+
+### Bad release of transfer-service
+
+Start: `scripts/fault-inject.sh bad-version on` (control panel > Bad release
+**On**). transfer-service rolls out version `2.0.0` with a simulated ledger
+contract regression: every transfer is ~0.4 s slower and about 15% fail with
+HTTP 500.
 
 | Step | Action | Talk track |
 |---|---|---|
-| 1 | Bank UI (`terraform output -raw web_banking_url`): send a transfer. With the fault on it is slow, fails or is declined. | "This is what the customer sees. Every click is traced in the browser, so the trace starts here, not at the first server." |
-| 2 | Observability > Alerts: the latency / error-rate alert for `transfer-service` (or `fraud-check`). Open the alert details. | "Customers' transfers are slowing down. We were told by the platform, not by the contact centre." |
-| 3 | Service map (environment `banking-demo`): alert badge on the affected node; SLO and anomaly indicators on the service. Click the node > Service details. | "One view tells us which hop is unhealthy and whether it is burning the SLO." |
-| 4 | Service overview: latency and failed transaction rate charts. Note the version comparison (bad-version: `2.0.0` appears next to `1.4.2`). | "A new version went out at the same time the regression started." |
-| 5 | Transactions > `POST /transfer` > **Latency correlations** / **Failed transaction correlations**. | "Elastic compares slow or failed transactions with healthy ones and ranks the attributes that explain the difference. Here `service.version: 2.0.0` is at the top." |
-| 6 | Pick a slow sample > **Trace waterfall** (or your transfer from step 1: service `web-banking-frontend` > transaction `Submit transfer` > latest sample; the browser span is the root, above `web-banking`). For slow-db, expand the `accounts-ledger` span and the Postgres child span with `pg_sleep`. For errors, open the span error and the `LedgerContractMismatchException` (bad-version) or HTTP 500 exception (errors). | "End-to-end trace across Node, Java, .NET and Python, and the exact span where the time goes." |
-| 7 | Still on the trace sample, open the **Logs** tab (next to Timeline and Metadata). Bad-version: the `ERROR Ledger contract mismatch ...` line from transfer-service. Errors: `Unhandled exception processing /score` from fraud-check. Slow-db: `WARN Slow ledger query ...` from accounts-ledger. Every service in the trace contributes lines (web-banking `transfer processed`, fraud-check `Scored transfer ...`, accounts-ledger `Posted debit ...`). | "These are the application logs for this one request, from all four services and languages. No SDK code in the apps, no log parsing: the EDOT agents write the trace id on every log record." |
+| 1 | Bank UI: send a few transfers. They are slower, and some end in "Transfer failed". | "This is what the customer sees. Every click is traced in the browser, so the trace starts here, not at the first server." |
+| 2 | Observability > Alerts: the error-rate alert for `transfer-service`. Open the alert details. | "Customers' transfers are failing. We were told by the platform, not by the contact centre." |
+| 3 | Service map (environment `banking-demo`): alert badge on `transfer-service`; SLO and anomaly indicators on the service. Click the node > Service details. | "One view tells us which hop is unhealthy and whether it is burning the SLO." |
+| 4 | Service overview: latency and failed transaction rate charts. Version `2.0.0` appears next to `1.4.2`. | "A new version went out at the same time the regression started." |
+| 5 | Transactions > `POST /transfer` > **Failed transaction correlations** (and **Latency correlations**). | "Elastic compares failed transactions with healthy ones and ranks the attributes that explain the difference. Here `service.version: 2.0.0` is at the top." |
+| 6 | Pick a failed sample > **Trace waterfall**. Open the span error: `LedgerContractMismatchException` ("Ledger response missing field 'postingId' (contract v2)"). The transfer fails before it reaches fraud-check or the ledger. | "End-to-end trace, and the exact line of the new release that fails." |
+| 7 | Still on the trace sample, open the **Logs** tab (next to Timeline and Metadata): the `ERROR Ledger contract mismatch ...` line from transfer-service and the `transfer failed` line from web-banking for the same request. | "These are the application logs for this one request. No SDK code in the apps, no log parsing: the EDOT agents write the trace id on every log record." |
 | 8 | Click a log line > open its details > **trace.id** / "View trace" to go from log back to the trace. | "It works both ways: whoever starts from a log line gets the full request in one click." |
 | 9 | Discover, ES|QL `FROM traces-*` (or a `traces-*` data view). Filter to a failing transfer (`service.name == "transfer-service" AND status.code == "Error"`), expand a row. The **Overview** tab shows the trace summary and a **Logs** section with the correlated logs; **Open in Discover** opens them as a log list (technical preview). | "The same correlation in Discover, for teams that live in logs and traces rather than the APM UI." |
-| 10 | Discover > ES|QL. Run the queries below (the second one is all logs for the trace you just opened). | "And when the out-of-the-box views are not enough, every signal is queryable with one language." |
+| 10 | Discover > ES|QL: run the first and third [queries below](#esql-queries-all-faults) (failures and p95 by `service.version`, errors by version). | "And when the out-of-the-box views are not enough, every signal is queryable with one language." |
 
-ES|QL examples (paste into Discover, mode ES|QL):
+### Slow database in accounts-ledger
+
+Start: `scripts/fault-inject.sh slow-db on` (control panel > Slow DB **On**).
+accounts-ledger adds `pg_sleep(0.8)` to balance lookups and a slow
+duplicate-reference scan to every debit and credit: balances take ~0.8 s
+longer and transfers ~1.6 s longer. Nothing fails.
+
+| Step | Action | Talk track |
+|---|---|---|
+| 1 | Bank UI: refresh the balance and send a transfer. Both succeed, but are noticeably slow. | "Nothing is broken, it is just slow: the kind of problem customers notice before most monitoring does." |
+| 2 | Observability > Alerts: the latency alert for `accounts-ledger`, and for `transfer-service` and `web-banking`, which wait on it. | "Three services alerting, one cause. Which one?" |
+| 3 | Service map: alert badges along the chain. `accounts-ledger` is the deepest unhealthy service, next to its Postgres dependency. Click it > Service details. | "The map shows where the slowness starts." |
+| 4 | Pick a slow sample > **Trace waterfall** (or your transfer from step 1). Expand the `accounts-ledger` span and its Postgres child span: the statement contains `pg_sleep`. | "End-to-end trace across Node, Java, .NET and Python, and the exact query where the time goes." |
+| 5 | Open the **Logs** tab: `WARN Slow ledger query: ... took N ms (threshold 500 ms)` from accounts-ledger, alongside the lines from every other service in the trace (web-banking `transfer processed`, fraud-check `Scored transfer ...`, accounts-ledger `Posted debit ...`). | "These are the application logs for this one request, from all four services and languages. No SDK code in the apps, no log parsing." |
+| 6 | Click the WARN line > **trace.id** / "View trace" to go back to the trace. | "Whoever starts from the log line gets the full request in one click." |
+| 7 | Discover > ES|QL: run the second and fourth [queries below](#esql-queries-all-faults) (all logs for this trace, pod CPU). | "Pod CPU is flat: the database is waiting, not short of resources. Adding nodes would not fix it." |
+
+### Latency on transfer-service
+
+Start: `scripts/fault-inject.sh latency on 1500` (control panel > Latency
+**On**). transfer-service waits 1500 ms on every transfer before doing any
+work. Balance checks do not go through transfer-service and are unaffected.
+
+| Step | Action | Talk track |
+|---|---|---|
+| 1 | Bank UI: send a transfer (1.5 s or more), then refresh the balance (fast). | "Only transfers are slow, so the problem is on the transfer path." |
+| 2 | Observability > Alerts: the latency alert for `transfer-service`, and for `web-banking`, which waits on it. | "The platform told us before the contact centre did." |
+| 3 | Service map: alert badge on `transfer-service`; its dependencies `fraud-check` and `accounts-ledger` are healthy. | "The services it calls are fine, so the time is spent inside transfer-service." |
+| 4 | Pick a slow sample > **Trace waterfall**. The `POST /transfer` span in transfer-service is ~1.5 s long, but its calls to fraud-check and accounts-ledger take their normal time; the gap before the first child call is the delay. | "The trace rules out every downstream service in one look." |
+| 5 | Discover > ES|QL: `FROM logs-*.otel-* \| WHERE service.name == "transfer-service" AND body.text LIKE "Fault config changed*"`. The `Fault config changed: LATENCY_MS=1500` line marks the moment it started. | "In a real incident this is the config change or deploy you look for at the start of the regression." |
+
+### Errors in fraud-check
+
+Start: `scripts/fault-inject.sh errors on 30` (control panel > Errors **On**).
+30% of fraud-check calls hang for 200-600 ms and then fail with HTTP 500
+(`FraudModelTimeoutException`). The transfer fails with them.
+
+| Step | Action | Talk track |
+|---|---|---|
+| 1 | Bank UI: send a few transfers. About one in three ends in "Transfer failed" (HTTP 500). | "Some customers can't pay. Which ones, and why?" |
+| 2 | Observability > Alerts: the error-rate alerts for `fraud-check`, `transfer-service` and `web-banking`. | "Three services alerting; the errors start at one of them." |
+| 3 | Service map: `fraud-check` is the deepest service with an alert badge. Click it > Service details. | "The errors start at fraud-check and travel up the call chain." |
+| 4 | fraud-check > **Errors**: the `FraudModelTimeoutException` group, with its occurrences over time. | "Errors are grouped by type, with the stack trace and the first and last time seen." |
+| 5 | Open a failed sample > **Trace waterfall** (or your failed transfer from step 1). The error on the fraud-check span becomes an HTTP 500 in transfer-service, web-banking and the browser. | "One trace shows the whole blast radius, from the fraud model to the customer's screen." |
+| 6 | Open the **Logs** tab: `Unhandled exception processing /score` from fraud-check, and the failure as it surfaced in web-banking (`transfer failed`). | "The logs for this one request, from every service, without searching." |
+| 7 | Discover > ES|QL: run the third [query below](#esql-queries-all-faults) (errors by service and version). | "Every signal is queryable with one language." |
+
+### ES|QL queries (all faults)
+
+Paste into Discover, mode ES|QL:
 
 ```esql
 FROM traces-*.otel-*
@@ -149,7 +209,9 @@ FROM metrics-*.otel-*
 Field names follow the OTel-native mappings in 9.5 (`duration` is in
 nanoseconds). Adjust if a field is named differently on your stack.
 
-How log correlation works here: each EDOT SDK (Java, .NET, Node.js, Python)
+### How log correlation works
+
+Each EDOT SDK (Java, .NET, Node.js, Python)
 exports the application's log records over OTLP with `trace_id` and `span_id`
 from the active span. The APM Logs tab and Discover's trace view filter
 `logs-*` on that trace id. Container stdout is also collected by the
