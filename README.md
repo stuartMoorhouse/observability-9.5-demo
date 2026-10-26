@@ -23,7 +23,7 @@ The click path and talk track for each scenario are in
    Browser: bank UI (OpenTelemetry web SDK, RUM)
                      |  HTTPS: CloudFront + AWS WAF -> Classic Load Balancer
                      |  (/api/* and /v1/traces RUM export, same origin)
-                     |     Amazon EKS (eu-north-1, spot nodes, fck-nat)
+                     |     Amazon EKS (eu-north-1, on-demand nodes, fck-nat)
  +-------------------|-----------------------------------------------------------+
  |  namespace: banking                                                           |
  |                   v                                                           |

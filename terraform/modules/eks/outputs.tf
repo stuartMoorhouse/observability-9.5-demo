@@ -20,5 +20,5 @@ output "vpc_id" {
 
 output "node_role_arn" {
   description = "IAM role ARN of the managed node group"
-  value       = module.eks.eks_managed_node_groups["spot"].iam_role_arn
+  value       = module.eks.eks_managed_node_groups["default"].iam_role_arn
 }

@@ -25,7 +25,7 @@ Every scenario step that uses `fault-inject.sh`, `onboard-service.sh`, `generate
 
 1. Service inventory: 4 services, no OTel SDK in any image.
 2. Show the `instrumentation.opentelemetry.io/inject-python` annotation in
-   `charts/fx-rates/templates/deployment.yaml`.
+   `charts/fx-rates/templates/fx-rates.yaml`.
 3. Control panel > **Onboard** (or `scripts/onboard-service.sh`, a Helm install, as the team's pipeline would run it).
 4. Infrastructure > Kubernetes, namespace `banking`: the new pod appears.
 5. Service inventory: `fx-rates` appears. Service map: a new `transfer-service -> fx-rates` edge.

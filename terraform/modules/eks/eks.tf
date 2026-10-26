@@ -60,13 +60,14 @@ module "eks" {
   }
 
   eks_managed_node_groups = {
-    spot = {
-      name            = "${var.prefix}-spot"
+    # On-demand, not spot: a spot reclaim mid-demo reschedules pods in front of the customer.
+    default = {
+      name            = "${var.prefix}-nodes"
       use_name_prefix = true
 
       ami_type       = var.node_architecture == "arm64" ? "AL2023_ARM_64_STANDARD" : "AL2023_x86_64_STANDARD"
-      capacity_type  = "SPOT"
-      instance_types = coalesce(var.node_instance_types, var.node_architecture == "arm64" ? ["m7g.large", "m6g.large", "m8g.large"] : ["m6i.large", "m7i.large", "m5.large"])
+      capacity_type  = "ON_DEMAND"
+      instance_types = coalesce(var.node_instance_types, var.node_architecture == "arm64" ? ["m7g.large"] : ["m6i.large"])
 
       min_size     = var.node_min_size
       max_size     = var.node_max_size
@@ -92,10 +93,6 @@ module "eks" {
 
       iam_role_additional_policies = {
         ebs_csi = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-      }
-
-      labels = {
-        "capacity-type" = "spot"
       }
 
       # provider default_tags do not reach launch template tag_specifications. The

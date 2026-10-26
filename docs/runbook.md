@@ -69,7 +69,7 @@ ticket or touching Kibana.
 | Step | Action | Talk track |
 |---|---|---|
 | 1 | Show Service inventory: 4 services, environment `banking-demo`. | "These are today's payment services. None of them contains an OpenTelemetry SDK; the OTel Operator injects instrumentation at pod start." |
-| 2 | Show `charts/fx-rates/templates/deployment.yaml` (the annotation `instrumentation.opentelemetry.io/inject-python`). | "This annotation is the only observability configuration the fx-rates team adds. That is the platform contract." |
+| 2 | Show `charts/fx-rates/templates/fx-rates.yaml` (the annotation `instrumentation.opentelemetry.io/inject-python`). | "This annotation is the only observability configuration the fx-rates team adds. That is the platform contract." |
 | 3 | Run `scripts/onboard-service.sh` | "Helm install, exactly as the team would do in their pipeline." |
 | 4 | While it waits (pods ready ~30-60 s, first spans typically 1-3 min): Infrastructure > Kubernetes, filter namespace `banking`, show the new pod. | "The node and pod views pick up the new workload from the EDOT DaemonSet; nothing to register." |
 | 5 | Script prints elapsed time and links. Refresh Service inventory: `fx-rates` appears. Open Service map: `transfer-service -> fx-rates` edge. | "Discovered from traces. The dependency on fx-rates is drawn because transfer-service now calls it for cross-currency transfers." |

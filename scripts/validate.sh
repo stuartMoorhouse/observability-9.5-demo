@@ -178,15 +178,18 @@ check_3() {
     ((inst == n)) || problems+=("${svc}: ${inst}/${n} pods have the operator init container")
   done
 
-  # Static check: no OTel SDK dependency in application manifests.
+  # Static check: no OTel SDK dependency in application manifests. The web-banking
+  # browser UI (apps/web-banking/frontend) is exempt: browser RUM cannot be injected
+  # by the operator, so it bundles the OpenTelemetry web SDK on purpose.
   if [[ -d "${REPO_ROOT}/apps" ]]; then
     local sdk_hits
     sdk_hits="$(grep -rIl --include=package.json --include=requirements*.txt --include=pyproject.toml \
-      --include=pom.xml --include=build.gradle* --include=*.csproj -i 'opentelemetry' "${REPO_ROOT}/apps" 2>/dev/null || true)"
+      --include=pom.xml --include=build.gradle* --include=*.csproj --exclude-dir=node_modules \
+      -i 'opentelemetry' "${REPO_ROOT}/apps" 2>/dev/null | grep -v "^${REPO_ROOT}/apps/web-banking/frontend/" || true)"
     if [[ -n "${sdk_hits}" ]]; then
       problems+=("OTel SDK referenced in app manifests: ${sdk_hits//${REPO_ROOT}\//}")
     else
-      details+=("no OpenTelemetry dependency in apps/ manifests")
+      details+=("no OpenTelemetry dependency in apps/ backend manifests (browser RUM in apps/web-banking/frontend is by design)")
     fi
   fi
 

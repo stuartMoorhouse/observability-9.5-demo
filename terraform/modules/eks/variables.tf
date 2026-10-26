@@ -37,7 +37,7 @@ variable "node_architecture" {
 }
 
 variable "node_instance_types" {
-  description = "Instance types for the spot managed node group. null = pick by node_architecture. Several types improve spot availability."
+  description = "Instance types for the on-demand managed node group. null = m7g.large (arm64) or m6i.large (x86_64)."
   type        = list(string)
   default     = null
 }
