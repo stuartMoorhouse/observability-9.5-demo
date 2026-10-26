@@ -110,6 +110,9 @@
       <p>During the demo you break the payment path on purpose (a bad release, a slow database, errors, added
         latency) and use Elastic to go from alert to root cause, check the SLO, and onboard a new service
         without any Kibana setup.</p>
+      <p class="bank-link" hidden>The customer's view: <a target="_blank" rel="noopener">open the web banking app ↗</a>.
+        Check a balance or send a transfer while a fault is on to see what customers experience; each action
+        shows its <code>trace.id</code>, which you can paste into Kibana.</p>
     </div>
 
     <div class="card">
@@ -117,12 +120,15 @@
       <p>A small payments application runs in the <code>banking</code> namespace on Amazon EKS. A transfer
         follows this path:</p>
       <ol>
-        <li><strong>web-banking</strong> (Node.js) receives the customer's transfer request.</li>
+        <li>The customer uses the <strong>bank UI</strong> in their browser to check a balance or send a
+          transfer.</li>
+        <li><strong>web-banking</strong> (Node.js) serves that page and receives the customer's transfer request.</li>
         <li><strong>transfer-service</strong> (Java, Spring Boot) orchestrates the transfer.</li>
         <li><strong>fraud-check</strong> (.NET) scores the transfer for fraud.</li>
         <li><strong>accounts-ledger</strong> (Python, FastAPI) posts the debit and credit to Postgres.</li>
       </ol>
-      <p>A k6 load generator in the cluster sends steady traffic. <strong>fx-rates</strong> (Python) is the
+      <p>A k6 load generator in the cluster sends steady traffic straight to web-banking's API, so the
+        charts have data without anyone clicking. <strong>fx-rates</strong> (Python) is the
         "new service" that you onboard live. The faults are driven by a <code>fault-config</code> ConfigMap,
         which the services re-read every 5 seconds. The Trigger errors tab edits that ConfigMap for you.</p>
     </div>
@@ -130,9 +136,13 @@
     <div class="card">
       <h2>How it is instrumented</h2>
       <ul>
-        <li>No service image contains an OpenTelemetry SDK. Each deployment has one pod annotation, and the
+        <li>No backend service contains an OpenTelemetry SDK. Each deployment has one pod annotation, and the
           OpenTelemetry Operator injects the matching language auto-instrumentation (Java, Node.js, .NET,
           Python) when the pod starts.</li>
+        <li>The bank UI is the exception: the OpenTelemetry browser SDK (real user
+          monitoring) records page loads and each customer action as <strong>web-banking-frontend</strong>.
+          It adds a trace header to each API call, so every backend trace starts with the customer's
+          click.</li>
         <li>The auto-instrumentation produces traces, metrics and logs for every request, with the
           service name, version and environment set as resource attributes.</li>
         <li>The Elastic Distribution of OpenTelemetry (EDOT) collectors, installed with the
@@ -146,7 +156,8 @@
       <h2>How the signals get to Elastic Cloud</h2>
       <ol>
         <li>Services send OTLP to the EDOT DaemonSet collector on their node, which adds Kubernetes metadata
-          (pod, namespace, deployment).</li>
+          (pod, namespace, deployment). The browser sends its spans to web-banking on the same address as the
+          page, and web-banking passes them on to that collector, so no collector is exposed to the internet.</li>
         <li>The DaemonSet and cluster collectors forward everything over OTLP to an EDOT gateway collector in
           the cluster.</li>
         <li>The gateway derives APM metrics from the traces and writes the data to Elasticsearch on Elastic
@@ -362,6 +373,12 @@ async function init() {
     document.querySelectorAll(".bad-v").forEach((n) => (n.textContent = `${cfg.base_version} -> ${cfg.bad_version}`));
     $("links").replaceChildren(...cfg.links.map((l) =>
       el("a", { href: l.url, target: "_blank", rel: "noopener", textContent: l.label + " ↗" })));
+    if (cfg.bank_url) {
+      document.querySelectorAll(".bank-link").forEach((p) => {
+        p.querySelector("a").href = cfg.bank_url;
+        p.hidden = false;
+      });
+    }
   } catch (e) {
     log("Could not load config: " + e.message, null, true);
   }

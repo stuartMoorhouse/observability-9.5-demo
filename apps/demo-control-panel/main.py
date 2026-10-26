@@ -283,6 +283,7 @@ def config():
         "bad_version": BAD_VERSION,
         "defaults": {"latency_ms": DEFAULT_LATENCY_MS, "error_rate": DEFAULT_ERROR_RATE, "load_rate": DEFAULT_LOAD_RATE},
         "links": links,
+        "bank_url": f"{BANK_URL}/" if BANK_URL else None,
         "architecture": arch,
     }
 
