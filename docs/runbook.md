@@ -14,6 +14,11 @@ All scripts run from the repo root and read endpoints and credentials from
 `terraform output` in `terraform/`. Run the `terraform` commands below from
 `terraform/` (or add `-chdir=terraform`).
 
+The reset (`scripts/reset-demo.sh`, or the control panel's **Reset demo**)
+leaves the demo ready for every scenario: fx-rates removed, other faults off,
+and a faulty release of transfer-service (`2.0.0`) rolling out. That release
+is the incident scenarios 2 to 4 investigate, each from a different angle.
+
 The demo control panel (`terraform output -raw control_panel_url`) has a
 button for every `fault-inject.sh`, `onboard-service.sh` and
 `generate-load.sh` command in this runbook, plus a plain reset.
@@ -45,13 +50,10 @@ Each scenario is self-contained and takes about 7 minutes:
 | [4. SLO burn-rate alerting](#scenario-4-slo-burn-rate-alerting) | On-call SREs, service owners, risk and compliance |
 | [5. Observability as code](#scenario-5-observability-as-code) | Platform engineers, risk and compliance |
 
-Suggested order: 1, 2, 3a, 3b, 4, 5 (~45 minutes). Scenarios 2 and 4 each
-need a fault running for a few minutes beforehand; each "Before you begin"
-says when to start it.
+Suggested order: 1, 2, 3a, 3b, 4, 5 (~45 minutes). Every scenario is ready
+about 5-6 minutes after a reset; scenario 1 fills that time.
 
-Short version (~15 minutes): scenarios 1 and 2. Turn on the scenario 2 fault
-when you start scenario 1; the alert and correlations are ready by the time
-onboarding is done.
+Short version (~15 minutes): scenarios 1 and 2.
 
 Alert rule timings are shortened for the demo
 (`terraform/modules/kibana-content/rules.tf`): threshold rules look at the
@@ -68,11 +70,13 @@ About an hour before running the scenarios:
    it resets, drives every scenario through the APIs, checks the runbook's
    ES|QL queries and log correlation, and resets again. It lists the UI-only
    steps to check by eye at the end.
-2. `scripts/reset-demo.sh --full` - baseline state, fx-rates removed, active
-   alerts cleared. It takes ~30 s, or up to ~6 min when a fault ran in the
-   last few minutes (it waits for burn-rate alerts to recover so they do not
-   fire again during the scenarios).
-3. `scripts/fault-inject.sh status` - every fault off, `APP_VERSION=1.4.2`.
+2. `scripts/reset-demo.sh --full` - resets the SLOs, clears active alerts,
+   removes fx-rates, turns the other faults off and then turns on the bad
+   release for scenarios 2-4. It takes ~1 min, or up to ~7 min when a fault
+   ran in the last few minutes (it waits for alerts to recover first, so the
+   bad release raises a new alert against a full error budget).
+3. `scripts/fault-inject.sh status` - `APP_VERSION=2.0.0 BAD_RELEASE=true`,
+   every other fault off.
 4. Log in to Kibana in three browser profiles (separate profiles keep the
    sessions apart):
    - `elastic` (superuser, for setup only) - `terraform output -raw elastic_password`
@@ -84,8 +88,9 @@ About an hour before running the scenarios:
    Observability > Applications > Service inventory, Service map, SLOs,
    Alerts, Discover (ES|QL), Dashboards. Send one transfer in the bank UI so
    `web-banking-frontend` is on the service map.
-7. If the SLO budget is depleted from earlier runs, reset it (SLOs > select
-   the SLO > Actions > Reset).
+7. Optional: start `scripts/detection-delay.sh` in a second terminal. It
+   waits for the burn-rate alert the bad release raises (~5-6 min) and records
+   the detection delay shown in scenario 4.
 
 ---
 
@@ -104,9 +109,9 @@ anomaly detection.
 
 ### Before you begin
 
-fx-rates must not be installed (the control panel shows its state;
-`scripts/reset-demo.sh` removes it). If scenario 2 follows, turn on its fault
-now: control panel > Bad release **On**.
+Ready after the reset, which removes fx-rates. transfer-service may already
+show an alert in the inventory: that is the faulty release scenario 2
+investigates.
 
 ### Steps
 
@@ -161,11 +166,11 @@ queries are written.
 
 ### Before you begin
 
-Turn on the bad release fault 3-5 minutes in advance: control panel > Bad
-release **On**, or `scripts/fault-inject.sh bad-version on`. It deploys
-transfer-service `2.0.0` with a simulated ledger contract regression, which
-makes every transfer ~0.4 s slower and fails about 15% with HTTP 500. The
-control panel shows transfer-service on `2.0.0` once it is active.
+Ready 3-5 minutes after the reset, which deploys transfer-service `2.0.0`
+with a simulated ledger contract regression: every transfer is ~0.4 s slower
+and about 25% fail with HTTP 500. The control panel shows transfer-service on
+`2.0.0` once it is active. To start it without a reset: control panel > Bad
+release **On**, or `scripts/fault-inject.sh bad-version on`.
 
 ### Steps
 
@@ -210,8 +215,7 @@ browser span is the root, above `web-banking`.
 Correlations need enough failed transactions to compare, typically 3-5
 minutes of traffic. With very low traffic the ranking is less clear.
 
-Leave the fault on for scenario 3a. Turn it off afterwards with
-`scripts/fault-inject.sh bad-version off`.
+The bad release stays on for scenarios 3a, 3b and 4.
 
 ---
 
@@ -229,8 +233,7 @@ by hand in scenario 2, and whether the evidence behind it is visible.
 
 ### Before you begin
 
-The scenario 2 fault must still be running. If scenario 4 follows, start
-`scripts/slo-breach.sh --keep-fault` now: it needs ~5 minutes.
+The bad release from the reset must still be running.
 
 ### Steps
 
@@ -293,62 +296,68 @@ traces are available.
 
 ### Overview
 
-Threshold alerts on latency or error rate also fire on short spikes that
-customers barely notice, and frequent pages teach people to ignore them.
-SLO-based alerting pages on how fast the error budget is being used up
-instead. This scenario shows a latency SLO for transfers, a sustained breach,
-and the burn-rate alert it raises, with the detection time measured by a
-script.
+Scenarios 2 and 3 looked at the faulty release from the engineering side:
+which service, which version, which line. This scenario looks at the same
+incident through a service level objective, the way a service owner or
+incident manager would: how much of the agreed reliability has been used up,
+and how quickly. Threshold alerts also fire on short spikes that customers
+barely notice; SLO-based alerting pages on how fast the error budget is being
+used up instead.
 
-**What to look for:** the measured time from the start of the fault to the
-alert.
+**What to look for:** the same release, now expressed as error budget, and
+the measured time from the release to the alert.
 
 ### Before you begin
 
-Start the breach ~5 minutes in advance (for example during scenario 3a):
+Ready about 5-6 minutes after `scripts/reset-demo.sh --full`: the reset
+restores the full error budget, clears earlier alerts and then starts the bad
+release, so the burn-rate alert it raises is new.
 
-```bash
-scripts/slo-breach.sh --keep-fault
-```
-
-The script records the fault start (UTC), injects 3000 ms latency on
-`transfer-service`, polls the SLO alerts index every 15 s for the burn-rate
-rule from `terraform output burn_rate_rule_id`, and writes
-`results/slo-breach-<timestamp>.json` with `fault_start`, `alert_detected`
-and `detection_delay_seconds`. Typical delay: ~4 minutes (5 min / 1 min
-fast-burn window, SLO transform delay, 1 min rule interval). Without
-`--keep-fault` the fault is turned off when the script exits.
+Run `scripts/detection-delay.sh` (or start it during preparation). It reads
+the bad release start time from the transfer-service Deployment, waits until
+the availability burn-rate rule pages for `transfer-service` (action group
+fast burn or high), and writes `results/detection-delay-<timestamp>.json`
+with `fault_start`, `paging_alert_at` and `detection_delay_seconds`. Typical
+delay: ~5 minutes (rollout, SLO transform delay, burn-rate windows, 1 min
+rule interval). A measured run: 282 s.
 
 ### Steps
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | Observability > SLOs: the transfer latency SLO, grouped by `service.name`. Select `transfer-service`. | The objective in customer terms: 99% of transactions complete within 500 ms over a rolling 7 days, with the remaining error budget. |
-| 2 | Open the SLO, then its linked burn-rate rule. | The SLI chart, the error budget burn-down, and a rule with several windows (fast and slow burn): it alerts when the budget is being used fast enough to run out, not when a single request is slow. |
-| 3 | Alerts: open the burn-rate alert. | The burn rate, windows and reason: the alert that would page the on-call engineer. |
-| 4 | Open the email notification, then Stack Management > Connectors > email connector > execution log. | A successful delivery through the Elastic Cloud email service. The same rule can call PagerDuty, ServiceNow or a webhook. |
-| 5 | Open `results/slo-breach-<timestamp>.json`. | `detection_delay_seconds`: the measured time from fault to alert in this run. |
+| 1 | Observability > SLOs: the transaction availability SLO, grouped by `service.name`. | The `transfer-service` instance is using its error budget fastest: the same release from scenario 2. `web-banking`, which passes the failed transfers on to the browser, uses budget more slowly, because most of its requests are balance checks. The objective is in customer terms: 99% of transactions succeed over a rolling 7 days. |
+| 2 | Open the latency SLO for `transfer-service`. | Still healthy: the release made transfers ~0.4 s slower, but within the 500 ms objective. The SLOs show which promise is being broken. |
+| 3 | Open the availability SLO's `transfer-service` instance, then its linked burn-rate rule. | The SLI chart, the error budget burn-down, and a rule with several windows (fast and slow burn): it alerts when the budget is being used fast enough to run out, not when a single request fails. |
+| 4 | Alerts: open the availability burn-rate alert for `transfer-service`. | Severity **High**: the 60 min and 1 min burn rates (around 6 and 20) are both above the threshold of 6. This is the alert that would page the on-call engineer. It first appears as Low a minute earlier: right after the SLO reset, the 24 h window holds only a few minutes of data. |
+| 5 | If `alert_email_recipients` is set: open the email notification, then Stack Management > Connectors > email connector > execution log. | A successful delivery through the Elastic Cloud email service. The same rule can call PagerDuty, ServiceNow or a webhook. With no recipients, the rules have no email action. |
+| 6 | Open `results/detection-delay-<timestamp>.json` (or the script's output). | `detection_delay_seconds`: the measured time from turning on the release to the paging alert in this run. |
 
 ### Explore further
 
-From the SLO details, open the underlying events: the APM service page for
-`transfer-service` filtered to the SLO window, or **View in Discover**.
+- From the SLO details, open the underlying events: the APM service page for
+  `transfer-service` filtered to the SLO window, or **View in Discover**.
+- A latency breach measured the same way: `scripts/slo-breach.sh` injects
+  3000 ms latency and times the latency burn-rate alert (validation criteria
+  9 and 10). Turn the bad release off first.
 
 ### What this shows
 
 - **On-call SREs:** fewer pages, and the ones that arrive mean the budget is
   actually at risk.
-- **Service owners:** each service, including new ones, has an objective in
-  customer terms and a visible budget to plan releases against.
+- **Service owners and incident managers:** the same incident the engineers
+  diagnosed appears as an objective in customer terms, with the budget it has
+  cost and a visible point at which to act.
 - **Risk and compliance:** detection time can be measured and reported.
 
 ### Limitations
 
 The rule windows are shortened for the demo. Production windows are longer,
 so detection takes longer; choosing them is a trade-off between speed and
-false alarms.
+false alarms. A new alert, and so a measurement, needs the previous alert to
+have recovered: `reset-demo.sh --full` takes care of that.
 
-Turn the fault off afterwards: `scripts/fault-inject.sh latency off`.
+Turn the bad release off afterwards with `scripts/fault-inject.sh bad-version
+off`, or leave it for the next run and reset.
 
 ---
 
@@ -401,7 +410,8 @@ and users are Terraform resources too (`elasticstack` provider).
 ## Appendix: other faults for scenario 2
 
 Alternatives to the bad release in scenario 2, each showing a different kind
-of incident.
+of incident. Turn the bad release off first (control panel > Bad release
+**Off**) so each fault is the only one running.
 
 | Fault | Command | Visible after |
 |---|---|---|
@@ -533,10 +543,16 @@ the correlated views. Per-service settings:
 Between runs:
 
 ```bash
-scripts/reset-demo.sh          # faults off, APP_VERSION=1.4.2 BAD_RELEASE=false, fx-rates removed, load 5 req/s
+scripts/reset-demo.sh          # other faults off, fx-rates removed, load 5 req/s, then the bad release on
 scripts/fault-inject.sh status
 ```
 
+`--no-fault` leaves every fault off instead (`APP_VERSION=1.4.2
+BAD_RELEASE=false`), for a fault-free baseline.
+
+- The plain reset does not clear alerts. If the bad release was already
+  running, its burn-rate alert may still be active, and no new alert is
+  raised for scenario 4. Use `--full` before a run.
 - Active alerts recover on their own: threshold alerts ~1-2 min after the
   fault stops, burn-rate alerts ~5-6 min. Wait for recovery (or use `--full`)
   before running `scripts/slo-breach.sh` again.
@@ -548,8 +564,8 @@ Before a fresh run:
 
 ```bash
 scripts/reset-demo.sh --full   # also resets both SLOs, redeploys dashboards from Git,
-                               # waits (up to 6 min) for alerts to recover, then
-                               # untracks any alert still active
+                               # waits (up to 6 min) for alerts to recover, untracks any
+                               # alert still active, then turns the bad release on
 ```
 
 Untracked alerts leave the Alerts page at once (they stay in alert history).

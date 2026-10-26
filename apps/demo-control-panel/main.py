@@ -40,6 +40,8 @@ ORIGIN_SECRET = os.environ.get("ORIGIN_SECRET", "")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 FAULT_CONFIGMAP = "fault-config"
+# Must match BAD_RELEASE_START_ANNOTATION in scripts/lib.sh.
+BAD_RELEASE_START_ANNOTATION = "demo.elastic.co/bad-release-start"
 FIELD_MANAGER = "demo-control-panel"
 DEFAULT_LATENCY_MS = 1500
 SLO_BREACH_LATENCY_MS = 3000
@@ -151,7 +153,7 @@ def patch_fault(key, val):
     return f"{key}: '{current or '<unset>'}' -> '{val}' ({svc} picks this up in ~5-20 s)."
 
 
-def set_env(name, **env):
+def set_env(name, annotations=None, **env):
     dep = get_deployment(name)
     if dep is None:
         raise ActionError(f"Deployment {name} not found in {NAMESPACE}.")
@@ -160,9 +162,21 @@ def set_env(name, **env):
     container = dep["spec"]["template"]["spec"]["containers"][0]["name"]
     patch = {"spec": {"template": {"spec": {"containers": [
         {"name": container, "env": [{"name": k, "value": v} for k, v in env.items()]}]}}}}
+    if annotations:
+        patch["metadata"] = {"annotations": annotations}  # None values remove the key
     k8s("PATCH", f"/apis/apps/v1/namespaces/{{ns}}/deployments/{name}", patch,
         "application/strategic-merge-patch+json")
     return f"{name}: {' '.join(f'{k}={v}' for k, v in env.items())} (rolling out)."
+
+
+def set_release(bad):
+    """Bad release on/off, with the start-time annotation scripts/detection-delay.sh reads."""
+    if bad:
+        start = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        return set_env("transfer-service", annotations={BAD_RELEASE_START_ANNOTATION: start},
+                       APP_VERSION=BAD_VERSION, BAD_RELEASE="true")
+    return set_env("transfer-service", annotations={BAD_RELEASE_START_ANNOTATION: None},
+                   APP_VERSION=BASE_VERSION, BAD_RELEASE="false")
 
 
 def scale(name, replicas):
@@ -207,11 +221,13 @@ def int_value(raw, default, lo, hi, label):
 
 
 def reset():
+    # Same end state as scripts/reset-demo.sh: other faults off, fx-rates removed, default
+    # load, and the bad release on (the incident runbook scenarios 2-4 investigate).
     msgs = [
         patch_fault("LATENCY_MS", "0"),
         patch_fault("ERROR_RATE", "0"),
         patch_fault("SLOW_DB", "false"),
-        set_env("transfer-service", APP_VERSION=BASE_VERSION, BAD_RELEASE="false"),
+        set_release(True),
         fx_remove(),
         set_env("loadgen", RATE=str(DEFAULT_LOAD_RATE)),
         scale("loadgen", 1),
@@ -226,15 +242,15 @@ ACTIONS = {
     "errors-off": lambda v: (patch_fault("ERROR_RATE", "0"), None),
     "slow-db-on": lambda v: (patch_fault("SLOW_DB", "true"), "slow-db"),
     "slow-db-off": lambda v: (patch_fault("SLOW_DB", "false"), None),
-    "bad-version-on": lambda v: (set_env("transfer-service", APP_VERSION=BAD_VERSION, BAD_RELEASE="true"), "bad-version"),
-    "bad-version-off": lambda v: (set_env("transfer-service", APP_VERSION=BASE_VERSION, BAD_RELEASE="false"), None),
+    "bad-version-on": lambda v: (set_release(True), "bad-version"),
+    "bad-version-off": lambda v: (set_release(False), None),
     "slo-breach-on": lambda v: (patch_fault("LATENCY_MS", str(SLO_BREACH_LATENCY_MS)), "slo-breach"),
     "slo-breach-off": lambda v: (patch_fault("LATENCY_MS", "0"), None),
     "fx-onboard": lambda v: (fx_onboard(), "fx-onboard"),
     "fx-remove": lambda v: (fx_remove(), None),
     "load-rate": lambda v: (set_env("loadgen", RATE=str(int_value(v, DEFAULT_LOAD_RATE, 1, 200, "Rate (req/s)"))) + " " + scale("loadgen", 1), None),
     "load-stop": lambda v: (scale("loadgen", 0), None),
-    "reset": lambda v: (reset(), None),
+    "reset": lambda v: (reset(), "bad-version"),
 }
 
 

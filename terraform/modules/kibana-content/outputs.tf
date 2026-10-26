@@ -25,6 +25,11 @@ output "burn_rate_rule_id" {
   value       = elasticstack_kibana_alerting_rule.burn_rate["latency"].rule_id
 }
 
+output "availability_burn_rate_rule_id" {
+  description = "Rule id of the burn-rate rule on the availability SLO (raised by the bad release)."
+  value       = elasticstack_kibana_alerting_rule.burn_rate["availability"].rule_id
+}
+
 output "latency_rule_id" {
   description = "Rule id of the per-service p95 latency threshold rule."
   value       = elasticstack_kibana_alerting_rule.latency.rule_id

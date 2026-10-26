@@ -381,7 +381,7 @@ check_8() {
   if ((bad_rate < 0)); then
     problems+=("no ${BAD_VERSION} server spans during bad-version fault")
   elif ((bad_rate < base_rate + 5)); then
-    # BAD_RELEASE fails ~15% of transfers (TransferController); 5 points leaves room for sampling noise.
+    # BAD_RELEASE fails ~25% of transfers (TransferController); 5 points leaves room for sampling noise.
     problems+=("${BAD_VERSION} failure rate not at least 5 points above ${BASE_VERSION}")
   fi
   "${SCRIPTS_DIR}/fault-inject.sh" bad-version off >/dev/null 2>&1 || problems+=("bad-version off failed")

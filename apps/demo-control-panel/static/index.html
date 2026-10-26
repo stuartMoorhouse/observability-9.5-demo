@@ -184,8 +184,8 @@
       </div>
 
       <div class="card">
-        <h2><span class="num">2-3</span>Incident to root cause</h2>
-        <p class="desc">Inject faults into the banking services and follow them from alert to root cause.</p>
+        <h2><span class="num">2-4</span>Incident to root cause</h2>
+        <p class="desc">The bad release, turned on by Reset, is the incident for scenarios 2-4. The other faults are alternatives from the runbook appendix: turn the bad release off before using one.</p>
         <div class="row">
           <span class="label">Bad release <small>transfer-service <span class="bad-v"></span></small></span>
           <span class="badge" id="b-bad"></span>
@@ -215,8 +215,8 @@
       </div>
 
       <div class="card">
-        <h2><span class="num">4</span>SLO burn-rate breach</h2>
-        <p class="desc">Hold transfer-service latency at 3000 ms so every transfer counts against the latency SLO and its error budget burns.</p>
+        <h2>Latency SLO breach</h2>
+        <p class="desc">Optional: hold transfer-service latency at 3000 ms so the latency SLO's error budget burns. Scenario 4 uses the bad release and the availability SLO instead.</p>
         <div class="row">
           <span class="label">Latency 3000 ms</span>
           <span class="badge" id="b-slo"></span>
@@ -227,7 +227,7 @@
 
       <div class="card">
         <h2>Load and reset</h2>
-        <p class="desc">k6 load generator inside the cluster. Reset turns faults off, restores the baseline release, removes fx-rates and sets the default load.</p>
+        <p class="desc">k6 load generator inside the cluster. Reset turns the other faults off, removes fx-rates, sets the default load and turns the bad release on, so every runbook scenario is ready. For a fault-free baseline, turn Bad release off afterwards.</p>
         <div class="row">
           <span class="label">Load <small>requests / s</small></span>
           <input type="number" id="v-load" min="1" max="200" aria-label="Requests per second">
@@ -235,8 +235,8 @@
           <button class="act" data-action="load-stop">Stop</button>
         </div>
         <div class="row">
-          <span class="label">Baseline</span>
-          <button class="act danger" data-action="reset" data-confirm="Reset the demo to baseline?">Reset demo</button>
+          <span class="label">Ready state</span>
+          <button class="act danger" data-action="reset" data-confirm="Reset the demo and start the bad release?">Reset demo</button>
         </div>
       </div>
     </div>

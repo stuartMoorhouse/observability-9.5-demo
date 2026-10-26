@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Return the demo to its baseline state between runs.
+# Reset the demo and leave it ready for every scenario in docs/runbook.md.
 #
-#   scripts/reset-demo.sh [--rate N] [--keep-fx-rates] [--full [--no-wait] [--wait-timeout MIN]]
+#   scripts/reset-demo.sh [--rate N] [--keep-fx-rates] [--no-fault] [--full [--no-wait] [--wait-timeout MIN]]
 #
 # Always:
 # - turns every fault off (latency, errors, slow-db)
 # - restores transfer-service APP_VERSION=1.4.2 BAD_RELEASE=false
 # - uninstalls fx-rates (unless --keep-fx-rates) so scenario 1 can be re-run
 # - restores the load generator to N req/s (default 5) with 1 replica
+# - finally turns the bad release on (transfer-service 2.0.0): the incident that
+#   scenarios 2-4 investigate. --no-fault leaves every fault off instead (clean
+#   baseline, used by scripts/test-runbook.sh).
 #
 # With --full (rehearsal / pre-meeting reset), additionally:
 # - resets the latency and availability SLOs (restores the full error budget)
@@ -17,6 +20,8 @@
 #   untracks any alert still active, so the next run starts from a clean
 #   Alerts page. --no-wait untracks at once; an alert whose rule window still
 #   holds fault data may then fire again within ~1 min and recover shortly after.
+# The bad release is turned on after these steps, so its SLO burn-rate alert is a
+# new alert against a full error budget (scripts/detection-delay.sh measures it).
 #
 # Traces, logs, metrics, alert history and ML anomaly results are never deleted
 # (resetting the ML job would also throw away its learned baseline).
@@ -30,6 +35,7 @@ DASHBOARDS_API="/api/dashboards"
 
 RATE="${DEFAULT_LOAD_RATE}"
 KEEP_FX=false
+NO_FAULT=false
 FULL=false
 WAIT_ALERTS=true
 WAIT_TIMEOUT_MIN=6
@@ -43,6 +49,7 @@ while (($# > 0)); do
   case "$1" in
     --rate) RATE="${2:?--rate needs a value}"; shift 2 ;;
     --keep-fx-rates) KEEP_FX=true; shift ;;
+    --no-fault) NO_FAULT=true; shift ;;
     --full) FULL=true; shift ;;
     --no-wait) WAIT_ALERTS=false; shift ;;
     --wait-timeout) WAIT_TIMEOUT_MIN="${2:?--wait-timeout needs a value}"; shift 2 ;;
@@ -54,10 +61,20 @@ is_int "${RATE}" || die "--rate must be an integer"
 is_int "${WAIT_TIMEOUT_MIN}" || die "--wait-timeout must be an integer (minutes)"
 
 if [[ "${FULL}" == "true" ]]; then
-  TOTAL=6
+  TOTAL=7
 else
-  TOTAL=3
+  TOTAL=4
 fi
+
+# Last step of every reset: start the scenario 2-4 incident, or leave all faults off.
+start_bad_release() {
+  if [[ "${NO_FAULT}" == "true" ]]; then
+    info "${TOTAL}/${TOTAL} Leaving every fault off (--no-fault)"
+  else
+    info "${TOTAL}/${TOTAL} Turning on the bad release (transfer-service ${BAD_VERSION}) for scenarios 2-4"
+    "${SCRIPTS_DIR}/fault-inject.sh" bad-version on
+  fi
+}
 
 reset_slos() {
   local id ids=() failed=0
@@ -140,9 +157,14 @@ info "3/${TOTAL} Load generator back to ${RATE} req/s"
 "${SCRIPTS_DIR}/generate-load.sh" "${RATE}"
 
 if [[ "${FULL}" != "true" ]]; then
+  start_bad_release
   cat <<'EOF'
 
 Reset complete. Notes:
+  - Unless --no-fault was given, the bad release is now rolling out: scenario 2
+    is ready in ~3-5 min, the SLO burn-rate alert for scenario 4 in ~5-6 min.
+  - Alerts from the previous run are not cleared, so the bad release may not
+    raise a new burn-rate alert. Use --full before a run that measures it.
   - Active alerts recover on their own once rules evaluate healthy data
     (threshold rules ~1-2 min; SLO burn-rate alerts ~5-6 min). Use --full to
     clear them at once. Wait for recovery before re-running
@@ -171,9 +193,15 @@ else
   untrack_demo_alerts || status=1
 fi
 
+start_bad_release || status=1
+
 echo
 if ((status == 0)); then
-  info "Full reset complete. Demo is at baseline: set the Kibana time picker to 'Last 15 minutes'."
+  if [[ "${NO_FAULT}" == "true" ]]; then
+    info "Full reset complete. Demo is at baseline: set the Kibana time picker to 'Last 15 minutes'."
+  else
+    info "Full reset complete. The bad release is rolling out: scenario 2 is ready in ~3-5 min, the scenario 4 burn-rate alert in ~5-6 min."
+  fi
 else
   warn "Full reset finished with warnings (see above). Re-run or check Kibana before presenting."
 fi

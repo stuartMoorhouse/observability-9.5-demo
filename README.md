@@ -23,7 +23,7 @@ The click path and talk track for each scenario are in
    Browser: bank UI (OpenTelemetry web SDK, RUM)
                      |  HTTPS: CloudFront + AWS WAF -> Classic Load Balancer
                      |  (/api/* and /v1/traces RUM export, same origin)
-                     |     Amazon EKS (eu-north-1, on-demand nodes, fck-nat)
+                     |     Amazon EKS (eu-west-2, on-demand nodes, fck-nat)
  +-------------------|-----------------------------------------------------------+
  |  namespace: banking                                                           |
  |                   v                                                           |
@@ -44,7 +44,7 @@ The click path and talk track for each scenario are in
                                         | OTLP -> Elasticsearch (API key)
                                         v
  +-------------------------------------------------------------------------------+
- |  Elastic Cloud Hosted 9.5 (AWS eu-north-1, 3 zones)                           |
+ |  Elastic Cloud Hosted 9.5 (AWS eu-west-2, 3 zones)                            |
  |   Elasticsearch hot tier + dedicated ML node, Kibana                          |
  |   Terraform-managed content: SLO (groupBy service.name), burn-rate and        |
  |   threshold rules, email connector, ML anomaly job, demo-sre / demo-viewer    |
@@ -145,7 +145,7 @@ terraform -chdir=terraform output -raw control_panel_url
 - **Links tab:** the bank UI and the Kibana pages used in the demo (service inventory,
   service map, alerts, SLOs, Discover, dashboards).
 - **Trigger errors tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
-  the scenario 4 SLO breach (3000 ms), load rate and reset. It shows live fault, release,
+  a latency SLO breach (3000 ms), load rate and reset (which turns the bad release on). It shows live fault, release,
   load and fx-rates state.
 - **Access:** HTTPS through a CloudFront distribution (`https://<id>.cloudfront.net`,
   CloudFront's default certificate). AWS WAF on the distribution only admits
@@ -164,7 +164,7 @@ terraform -chdir=terraform output -raw control_panel_url
   Kubernetes API, not `helm install`. `scripts/onboard-service.sh uninstall` and
   `scripts/reset-demo.sh` remove them either way.
 - **Elastic-side work stays in scripts:** the SLO reset and dashboard redeploy
-  (`reset-demo.sh --full`) and the measured detection delay (`slo-breach.sh`) need the
+  (`reset-demo.sh --full`) and the measured detection delay (`detection-delay.sh`) need the
   `elastic` password, which is kept out of the cluster.
 - **Drift:** like the scripts, the panel changes Helm-managed objects. A later
   `terraform apply` resets them to their defaults.
@@ -204,10 +204,11 @@ See [docs/runbook.md](docs/runbook.md). Script summary:
 |---|---|
 | `scripts/fault-inject.sh <latency\|errors\|slow-db\|bad-version\|all> <on\|off> [value]` | Toggle faults; `status` shows the current state |
 | `scripts/onboard-service.sh [install\|uninstall]` | Scenario 1: deploy fx-rates and time its first telemetry |
-| `scripts/slo-breach.sh [--keep-fault]` | Scenario 4: drive a burn-rate breach, write `results/slo-breach-<ts>.json` |
+| `scripts/detection-delay.sh` | Scenario 4: time from the bad release to its availability burn-rate alert, writes `results/detection-delay-<ts>.json` |
+| `scripts/slo-breach.sh [--keep-fault]` | Validation criteria 9-10: drive a latency burn-rate breach, write `results/slo-breach-<ts>.json` |
 | `scripts/export-dashboard.sh <id\|title>` | Scenario 5: export a UI dashboard to `dashboards/<slug>.json` |
 | `scripts/generate-load.sh <rate\|start\|stop\|status>` | Control the in-cluster k6 load generator |
-| `scripts/reset-demo.sh` | Faults off, baseline release, remove fx-rates, restore load. `--full` also resets SLOs, redeploys dashboards from Git and clears active alerts (waits up to 6 min, then untracks) |
+| `scripts/reset-demo.sh` | Ready state for the runbook: other faults off, remove fx-rates, restore load, then turn the bad release on (`--no-fault` leaves every fault off). `--full` also resets SLOs, redeploys dashboards from Git and clears active alerts first (waits up to 6 min, then untracks) |
 | `scripts/validate.sh [--scenarios] [--slo-breach]` | Acceptance checks, writes `results/validate-<ts>.json` |
 | `scripts/test-runbook.sh [--no-slo-breach]` | End-to-end runbook test: reset, validate.sh, runbook-only checks (log correlation per fault, runbook ES\|QL queries, control panel), reset again (~25-35 min), writes `results/test-runbook-<ts>.json` |
 
@@ -227,7 +228,7 @@ Criterion 14 (clean destroy) is checked by running `terraform destroy`.
 ## Teardown
 
 ```bash
-scripts/reset-demo.sh      # optional: removes the out-of-band fx-rates Helm release
+scripts/reset-demo.sh --no-fault   # optional: removes the out-of-band fx-rates Helm release
 terraform destroy
 ```
 

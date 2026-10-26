@@ -71,7 +71,9 @@ public class TransferController {
 
         if (badRelease) {
             Thread.sleep(350 + ThreadLocalRandom.current().nextInt(100));
-            if (ThreadLocalRandom.current().nextInt(100) < 15) {
+            // 25% failures: an availability burn rate of ~23 against the 99% SLO, clearly above the
+            // 14.4 fast-burn threshold even with health-check transactions diluting the rate.
+            if (ThreadLocalRandom.current().nextInt(100) < 25) {
                 log.error("Ledger contract mismatch for transfer {}: expected ledger schema v2, got v1",
                         transferId);
                 throw new LedgerContractMismatchException(

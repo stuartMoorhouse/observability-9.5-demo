@@ -86,6 +86,11 @@ output "burn_rate_rule_id" {
   value       = module.kibana_content.burn_rate_rule_id
 }
 
+output "availability_burn_rate_rule_id" {
+  description = "Availability SLO burn-rate rule ID"
+  value       = module.kibana_content.availability_burn_rate_rule_id
+}
+
 output "latency_rule_id" {
   description = "Latency threshold rule ID"
   value       = module.kibana_content.latency_rule_id

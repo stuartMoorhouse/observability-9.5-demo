@@ -77,6 +77,12 @@ set_release() {
     return 0
   fi
   kctl set env deployment/transfer-service "APP_VERSION=${version}" "BAD_RELEASE=${bad}" >/dev/null
+  # Start time of the bad release, read by scripts/detection-delay.sh (the demo-control-panel sets it too).
+  if [[ "${bad}" == "true" ]]; then
+    kctl annotate --overwrite deployment/transfer-service "${BAD_RELEASE_START_ANNOTATION}=$(utc_now)" >/dev/null
+  else
+    kctl annotate deployment/transfer-service "${BAD_RELEASE_START_ANNOTATION}-" >/dev/null 2>&1 || true
+  fi
   info "transfer-service: APP_VERSION ${cur_version:-<unset>} -> ${version}, BAD_RELEASE ${cur_bad:-<unset>} -> ${bad}"
   info "Waiting for rollout (up to 5 min)..."
   if ! kctl rollout status deployment/transfer-service --timeout=300s >&2; then

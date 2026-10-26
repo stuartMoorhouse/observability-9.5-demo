@@ -32,6 +32,8 @@ ENVIRONMENT_NAME="banking-demo"
 BASE_SERVICES=(web-banking transfer-service fraud-check accounts-ledger)
 BASE_VERSION="1.4.2"
 BAD_VERSION="2.0.0"
+# Deployment annotation holding the UTC time the bad release was turned on.
+BAD_RELEASE_START_ANNOTATION="demo.elastic.co/bad-release-start"
 DEFAULT_LOAD_RATE=5
 FAULT_CONFIGMAP="fault-config"
 

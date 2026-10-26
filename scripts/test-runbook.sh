@@ -7,7 +7,7 @@
 #   --wait MIN       minutes each fault runs before it is checked (default 2)
 #
 # Steps:
-# 1. scripts/reset-demo.sh --full
+# 1. scripts/reset-demo.sh --full --no-fault
 # 2. scripts/validate.sh 2-5,11-13 (stack, services, log/trace correlation, AI
 #    roles, dashboards, secrets) and --scenarios 6-8 (scenario 1 onboarding,
 #    latency alert, correlations for bad-version and errors)
@@ -21,9 +21,10 @@
 #    R6 demo control panel answers
 #    R7 bank UI answers via CloudFront, its API works, and an OTLP span posted to
 #       its /v1/traces RUM endpoint reaches traces-* as web-banking-frontend
-# 4. scripts/reset-demo.sh --full --keep-fx-rates, then validate.sh
+# 4. scripts/reset-demo.sh --full --keep-fx-rates --no-fault, then validate.sh
 #    --slo-breach 9-10 (scenario 4 burn-rate alert and email)
-# 5. scripts/reset-demo.sh --full. Always runs, also after a failure or Ctrl-C.
+# 5. scripts/reset-demo.sh --full (leaves the bad release on, ready for the
+#    runbook). Always runs, also after a failure or Ctrl-C.
 #
 # UI-only steps (rendering, badges, AI answers) cannot be checked through the
 # APIs; they are listed at the end. Typical run: 25-35 min.
@@ -234,7 +235,7 @@ main() {
   started="$(utc_now)"
 
   print_step "1/5 Reset"
-  "${SCRIPTS_DIR}/reset-demo.sh" --full || warn "Reset reported problems; continuing"
+  "${SCRIPTS_DIR}/reset-demo.sh" --full --no-fault || warn "Reset reported problems; continuing"
 
   print_step "2/5 validate.sh: static checks and scenarios 1-2"
   run_validate --only 2,3,4,5,11,12,13
@@ -259,7 +260,7 @@ main() {
 
   if [[ "${RUN_SLO_BREACH}" == "true" ]]; then
     print_step "4/5 Reset (keep fx-rates), then scenario 4 SLO breach"
-    "${SCRIPTS_DIR}/reset-demo.sh" --full --keep-fx-rates || warn "Reset reported problems; continuing"
+    "${SCRIPTS_DIR}/reset-demo.sh" --full --keep-fx-rates --no-fault || warn "Reset reported problems; continuing"
     run_validate --slo-breach --only 9,10
   else
     print_step "4/5 SLO breach skipped (--no-slo-breach)"
