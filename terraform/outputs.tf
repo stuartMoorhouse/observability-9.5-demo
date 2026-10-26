@@ -91,6 +91,11 @@ output "availability_burn_rate_rule_id" {
   value       = module.kibana_content.availability_burn_rate_rule_id
 }
 
+output "triage_workflow_id" {
+  description = "AI triage workflow ID (run by the error-rate rule)"
+  value       = module.kibana_content.triage_workflow_id
+}
+
 output "latency_rule_id" {
   description = "Latency threshold rule ID"
   value       = module.kibana_content.latency_rule_id

@@ -50,7 +50,8 @@ public class TransferController {
         this.fxUrl = fxUrl;
         this.badRelease = badRelease;
         if (badRelease) {
-            log.warn("BAD_RELEASE enabled: ledger contract regression active");
+            // Reads like a normal release note: the triage agent quotes startup logs as evidence.
+            log.info("Ledger client using contract v2 (postingId required)");
         }
     }
 

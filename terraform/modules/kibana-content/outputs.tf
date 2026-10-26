@@ -49,3 +49,8 @@ output "dashboard_ids" {
   description = "Dashboard ids deployed from dashboards_dir."
   value       = keys(local.dashboards)
 }
+
+output "triage_workflow_id" {
+  description = "Id of the AI triage workflow run by the error-rate rule."
+  value       = elasticstack_kibana_agentbuilder_workflow.triage.workflow_id
+}

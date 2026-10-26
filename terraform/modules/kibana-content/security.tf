@@ -5,9 +5,10 @@
 #   observabilityAIAssistant (observability_ai_assistant/common/feature.ts, "all" only),
 #   agentBuilder (Agent Builder permissions doc: feature_agentBuilder.read|all),
 #   actions (actions/server/feature.ts; Agent Builder needs feature_actions.read to use connectors),
-#   discover_v2, dashboard_v2, visualize_v2 (features/server/oss_features.ts), ml, stackAlerts.
+#   discover_v2, dashboard_v2, visualize_v2 (features/server/oss_features.ts), ml, stackAlerts,
+#   workflowsManagement (Workflows setup doc: All or Read for Analytics > Workflows).
 #
-# demo-sre:    Observability all + Observability AI Assistant + Agent Builder + Actions and Connectors,
+# demo-sre:    Observability all + Observability AI Assistant + Agent Builder + Actions and Connectors + Workflows,
 #              plus monitor_inference (required for the Elastic Managed LLM / Inference API).
 # demo-viewer: Observability read only. No observabilityAIAssistant, agentBuilder or actions feature and no
 #              monitor_inference, so AI Assistant / AI Agent are hidden or return 403.
@@ -96,6 +97,10 @@ resource "elasticstack_kibana_security_role" "demo_sre" {
     }
     feature {
       name       = "actions"
+      privileges = ["all"]
+    }
+    feature {
+      name       = "workflowsManagement"
       privileges = ["all"]
     }
   }

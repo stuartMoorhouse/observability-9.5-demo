@@ -10,7 +10,8 @@ The demo covers five scenarios:
 
 1. Self-service Kubernetes onboarding of a new service
 2. Incident to root cause (alert, service map, correlations, traces, logs, ES|QL)
-3. AI-assisted triage (3a) and AI access control by role (3b)
+3. AI-assisted triage run by an alert-triggered Elastic Workflow (3a) and AI access
+   control by role (3b)
 4. SLO burn-rate alerting with a measured detection delay
 5. Observability as code (dashboards from Git, export from the UI)
 
@@ -48,7 +49,8 @@ The click path and talk track for each scenario are in
  |   Elasticsearch hot tier + dedicated ML node, Kibana                          |
  |   Terraform-managed content: SLO (groupBy service.name), burn-rate and        |
  |   threshold rules, email connector, ML anomaly job, demo-sre / demo-viewer    |
- |   roles and users, dashboards (Dashboards API)                                |
+ |   roles and users, dashboards (Dashboards API), AI triage workflow and        |
+ |   Agent Builder agent (run by the error-rate rule, results in a case)         |
  |   Elastic Managed LLM for the AI Assistant / Agent                            |
  +-------------------------------------------------------------------------------+
 ```
@@ -208,7 +210,7 @@ See [docs/runbook.md](docs/runbook.md). Script summary:
 | `scripts/slo-breach.sh [--keep-fault]` | Validation criteria 9-10: drive a latency burn-rate breach, write `results/slo-breach-<ts>.json` |
 | `scripts/export-dashboard.sh <id\|title>` | Scenario 5: export a UI dashboard to `dashboards/<slug>.json` |
 | `scripts/generate-load.sh <rate\|start\|stop\|status>` | Control the in-cluster k6 load generator |
-| `scripts/reset-demo.sh` | Ready state for the runbook: other faults off, remove fx-rates, restore load, then turn the bad release on (`--no-fault` leaves every fault off). `--full` also resets SLOs, redeploys dashboards from Git and clears active alerts first (waits up to 6 min, then untracks) |
+| `scripts/reset-demo.sh` | Ready state for the runbook: other faults off, remove fx-rates, restore load, then turn the bad release on (`--no-fault` leaves every fault off). `--full` also resets SLOs, redeploys dashboards from Git, clears active alerts (waits up to 6 min, then untracks) and closes the AI triage cases first |
 | `scripts/validate.sh [--scenarios] [--slo-breach]` | Acceptance checks, writes `results/validate-<ts>.json` |
 | `scripts/test-runbook.sh [--no-slo-breach]` | End-to-end runbook test: reset, validate.sh, runbook-only checks (log correlation per fault, runbook ES\|QL queries, control panel), reset again (~25-35 min), writes `results/test-runbook-<ts>.json` |
 

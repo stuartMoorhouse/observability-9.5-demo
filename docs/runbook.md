@@ -71,7 +71,8 @@ About an hour before running the scenarios:
    ES|QL queries and log correlation, and resets again. It lists the UI-only
    steps to check by eye at the end.
 2. `scripts/reset-demo.sh --full` - resets the SLOs, clears active alerts,
-   removes fx-rates, turns the other faults off and then turns on the bad
+   closes the AI triage cases from the previous run, removes fx-rates, turns
+   the other faults off and then turns on the bad
    release for scenarios 2-4. It takes ~1 min, or up to ~7 min when a fault
    ran in the last few minutes (it waits for alerts to recover first, so the
    bad release raises a new alert against a full error budget).
@@ -224,37 +225,75 @@ The bad release stays on for scenarios 3a, 3b and 4.
 ### Overview
 
 Most incidents need the same sequence of triage steps, and less experienced
-on-call engineers take longer to work through them. This scenario
-investigates the incident from scenario 2 with an AI agent, which lists each
-tool call and the data it used.
+on-call engineers take longer to work through them. In this scenario the
+first pass runs automatically: when the error-rate alert from scenario 2
+fires, an Elastic Workflow hands it to an AI agent, which investigates and
+records its findings in a case before anyone opens the alert.
+
+The workflow is **Banking alert triage**, defined in Git
+(`terraform/modules/kibana-content/workflows/alert-triage.yaml`). The
+error-rate rule runs it once for each new alert, so once per service that
+starts failing. It has three steps:
+
+1. **investigate** - runs the `banking-triage` Agent Builder agent on the
+   alert. The agent follows the same path as scenario 2 (alerts, service
+   topology, correlations, traces, logs) and returns a structured result:
+   summary, root cause, confidence, evidence, next steps and an ES|QL query.
+2. **create_case** - opens an Observability case with that result and a link
+   to the agent's conversation.
+3. **attach_alert** - attaches the alert to the case.
 
 **What to look for:** whether the agent's conclusion matches the one reached
-by hand in scenario 2, and whether the evidence behind it is visible.
+by hand in scenario 2, and whether each finding can be traced to the tool
+call that produced it.
 
 ### Before you begin
 
-The bad release from the reset must still be running.
+- The bad release from the reset must still be running.
+- The cases appear 2-4 minutes after the reset: the error-rate alerts fire
+  within a minute of the bad release starting, and the agent then takes
+  about 2 minutes per alert. They are ready by the time scenario 1 ends.
+- `scripts/reset-demo.sh --full` closes the cases from the previous run. A
+  plain reset leaves them open, so the list may show earlier cases too.
 
 ### Steps
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | As `demo-sre`, open the alert from scenario 2 and start the **AI Assistant** from the alert ("Help me understand this alert"), or open **Agent Builder > Agents** and chat with the observability agent. | The assistant, using the Elastic Managed LLM that comes with the deployment. No third-party API key is configured. |
-| 2 | Prompt: "Investigate the alerts on transfer-service in banking-demo over the last 30 minutes. Find the root cause and suggest next steps." | The agent reads alerts, SLOs, service dependencies, correlations, traces and logs, the same steps as scenario 2, and lists each tool call so the result can be checked. |
-| 3 | Follow up: "Write an ES\|QL query that shows the error rate by service.version for transfer-service." Run it in Discover. | A query that can be verified and kept. |
+| 1 | As `demo-sre`, open **Workflows** > **Banking alert triage** > **Executions** and open the latest run. | One run per alerting service (`transfer-service` and `web-banking`), each with its trigger (the alert), its three steps, their inputs and outputs, and their duration. |
+| 2 | Observability > **Cases**: open the `AI triage: transfer-service - ...` case. | The agent's summary, root cause and confidence, the evidence list, next steps and an ES\|QL query, with the alert attached. The result was produced by the workflow; nobody asked for it. |
+| 3 | Follow the **Agent conversation** link in the case. The error-rate rule is owned by `demo-sre`, so the workflow, and the conversation, run as that user. | The agent's conversation in Agent Builder: every tool call (alerts, topology, correlations, traces, logs, ES\|QL) with its input and result, so each finding can be checked against the data. |
+| 4 | Copy the case's ES\|QL query and run it in Discover. | A query that can be verified and kept, for example the error rate by `service.version`. |
+| 5 | In the conversation, ask a follow-up: "Which deployment introduced this version, and when?" | The agent continues from the same context. The automated first pass becomes the start of an interactive investigation. |
+
+### Explore further
+
+- Open the `web-banking` case. The agent should identify `web-banking` as
+  failing because it calls `transfer-service`, not as the cause.
+- The **AI Assistant** button on the alert ("Help me understand this alert")
+  gives the same kind of analysis on demand, without the workflow.
+- The workflow, the agent and the rule action are all Terraform resources
+  (`terraform/modules/kibana-content/triage.tf`), reviewed and deployed like
+  the rest of the configuration (scenario 5).
 
 ### What this shows
 
-- **On-call SREs:** a first pass at the investigation, with the queries it
-  ran, to check and build on.
+- **On-call SREs:** by the time the alert is opened, a first investigation is
+  already in a case, with the queries behind it, to check and build on.
+- **Platform engineers:** the triage is a versioned workflow, not a manual
+  procedure, and the same pattern can add notification, ticketing or
+  remediation steps.
 - **Risk, security and compliance:** the model is the Elastic Managed LLM of
-  this deployment. Where data is processed is documented per region for the
-  Elastic Managed LLM and should be confirmed for the region in use.
+  this deployment, and no third-party API key is configured. Where data is
+  processed is documented per region for the Elastic Managed LLM and should
+  be confirmed for the region in use. Each run is recorded in the workflow's
+  execution history.
 
 ### Limitations
 
-AI answers can be wrong or incomplete. The tool calls are listed so that a
-person verifies the conclusion before acting on it.
+AI answers can be wrong or incomplete, and two runs on the same alert can
+word their conclusions differently. The case says so at the top, and links to
+the tool calls so that a person verifies the conclusion before acting on it.
 
 ---
 
@@ -278,7 +317,7 @@ traces are available.
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | Switch to the `demo-viewer` browser profile. Open the same alert, service map, correlations, trace waterfall and logs. | Everything used in scenario 2 works. There is no AI Assistant button, and Agent Builder is not in the navigation. |
+| 1 | Switch to the `demo-viewer` browser profile. Open the same alert, service map, correlations, trace waterfall and logs, then the AI triage case from scenario 3a and its **Agent conversation** link. | Everything used in scenario 2 works. There is no AI Assistant button, and Agent Builder is not in the navigation. The case can be read, but the conversation does not open: it belongs to `demo-sre`. |
 | 2 | In the `elastic` profile: Stack Management > Roles > `demo-viewer`, then `demo-sre`. | `demo-viewer` has Observability read and no AI Assistant or Agent Builder privileges; `demo-sre` has both. AI access is an ordinary role privilege. |
 | 3 | Open `terraform/modules/kibana-content/security.tf`. | Both roles are defined in Terraform, so a change to AI access goes through code review. |
 
@@ -597,3 +636,4 @@ that date. See README.md, Teardown.
 | Bank UI returns 403 from CloudFront | Your IP is not in `control_panel_allowed_cidrs` (the WAF ACL is shared with the control panel) |
 | No new burn-rate alert | A previous alert is still active; wait for recovery or reset the SLO |
 | AI Assistant not responding | Managed LLM connector in Stack Management > Connectors; user is `demo-sre` |
+| No AI triage case after ~5 min | Workflows > Banking alert triage > Executions: a failed step shows its error. No execution at all: the error-rate alert started before the workflow existed or is still active from an earlier run (only new alerts trigger it); run `scripts/reset-demo.sh --full` |

@@ -161,5 +161,27 @@ resource "elasticstack_kibana_alerting_rule" "error_rate" {
     }
   })
 
+  # Created as demo-sre, so the rule's API key, and with it the triage workflow run, the agent and its
+  # conversation, belong to demo-sre: the case's conversation link opens for the on-call user. Created
+  # as elastic, the conversation would be private to elastic.
+  kibana_connection {
+    endpoints = [var.kibana_endpoint]
+    username  = elasticstack_elasticsearch_security_user.demo_sre.username
+    password  = random_password.demo_sre.result
+  }
+
+  # AI triage (triage.tf): run the workflow for each new alert. A system action, so no group or
+  # frequency; the workflow receives only new alerts, so an ongoing alert does not re-run it.
+  actions {
+    id = "system-connector-.workflows"
+    params = jsonencode({
+      subAction = "run"
+      subActionParams = {
+        workflowId  = elasticstack_kibana_agentbuilder_workflow.triage.workflow_id
+        summaryMode = false
+      }
+    })
+  }
+
   tags = concat(local.common_tags, ["error-rate"])
 }

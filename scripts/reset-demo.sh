@@ -20,6 +20,8 @@
 #   untracks any alert still active, so the next run starts from a clean
 #   Alerts page. --no-wait untracks at once; an alert whose rule window still
 #   holds fault data may then fire again within ~1 min and recover shortly after.
+# - closes the open AI triage cases (tag ai-triage) created by the triage workflow,
+#   so the next bad release opens a fresh one
 # The bad release is turned on after these steps, so its SLO burn-rate alert is a
 # new alert against a full error budget (scripts/detection-delay.sh measures it).
 #
@@ -61,7 +63,7 @@ is_int "${RATE}" || die "--rate must be an integer"
 is_int "${WAIT_TIMEOUT_MIN}" || die "--wait-timeout must be an integer (minutes)"
 
 if [[ "${FULL}" == "true" ]]; then
-  TOTAL=7
+  TOTAL=8
 else
   TOTAL=4
 fi
@@ -136,6 +138,21 @@ wait_for_alert_recovery() {
   done
 }
 
+# Close the open cases the AI triage workflow opened (terraform/modules/kibana-content/triage.tf).
+close_triage_cases() {
+  local found body count
+  found="$(kb_api GET "/api/cases/_find?owner=observability&tags=ai-triage&status=open&status=in-progress&perPage=100")" ||
+    return 1
+  count="$(jq -r '.cases | length' <<<"${found}")"
+  if [[ "${count}" == "0" ]]; then
+    info "  No open AI triage cases"
+    return 0
+  fi
+  body="$(jq -c '{cases: [.cases[] | {id, version, status: "closed"}]}' <<<"${found}")"
+  kb_api PATCH "/api/cases" "${body}" >/dev/null || return 1
+  info "  Closed ${count} AI triage case(s)"
+}
+
 ensure_kube
 if [[ "${FULL}" == "true" ]]; then
   require_cmd jq curl
@@ -192,6 +209,9 @@ else
   info "6/${TOTAL} Untracking active alerts (--no-wait)"
   untrack_demo_alerts || status=1
 fi
+
+info "7/${TOTAL} Closing AI triage cases"
+close_triage_cases || { error "  Closing AI triage cases failed"; status=1; }
 
 start_bad_release || status=1
 
