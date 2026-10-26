@@ -24,6 +24,9 @@ spec:
         {{- if eq $svc.language "dotnet" }}
         instrumentation.opentelemetry.io/otel-dotnet-auto-runtime: {{ $svc.dotnetRuntime | default "linux-x64" | quote }}
         {{- end }}
+        {{- if $svc.publicPort }}
+        checksum/origin: {{ $.Values.originSecret | sha256sum | trunc 16 }}
+        {{- end }}
     spec:
       serviceAccountName: demo-app
       automountServiceAccountToken: false
@@ -43,6 +46,11 @@ spec:
             - name: http
               containerPort: {{ $svc.port }}
               protocol: TCP
+            {{- if $svc.publicPort }}
+            - name: public
+              containerPort: {{ $svc.publicPort }}
+              protocol: TCP
+            {{- end }}
           env:
             # APP_VERSION must precede OTEL_RESOURCE_ATTRIBUTES for $(APP_VERSION) expansion
             - name: APP_VERSION
@@ -57,6 +65,15 @@ spec:
               value: {{ $svc.port | quote }}
             - name: FAULT_DIR
               value: /etc/fault
+            {{- if $svc.publicPort }}
+            - name: PUBLIC_PORT
+              value: {{ $svc.publicPort | quote }}
+            - name: ORIGIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}-origin
+                  key: origin-secret
+            {{- end }}
             {{- range $k, $v := $svc.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}

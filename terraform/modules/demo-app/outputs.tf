@@ -23,3 +23,8 @@ output "control_panel_url" {
   description = "demo-control-panel HTTPS URL (CloudFront default certificate)"
   value       = "https://${aws_cloudfront_distribution.control_panel.domain_name}"
 }
+
+output "web_banking_url" {
+  description = "web-banking browser UI HTTPS URL (CloudFront default certificate)"
+  value       = "https://${aws_cloudfront_distribution.web_banking.domain_name}"
+}

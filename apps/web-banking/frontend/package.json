@@ -1,0 +1,19 @@
+{
+  "name": "web-banking-frontend",
+  "version": "1.4.2",
+  "private": true,
+  "description": "Demo bank browser UI with OpenTelemetry browser instrumentation (RUM)",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --sourcemap --target=es2020 --outfile=dist/bundle.js"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@opentelemetry/instrumentation": "0.223.0",
+    "@opentelemetry/instrumentation-document-load": "0.68.0",
+    "@opentelemetry/instrumentation-fetch": "0.223.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-trace-web": "2.12.0",
+    "esbuild": "0.28.2"
+  }
+}

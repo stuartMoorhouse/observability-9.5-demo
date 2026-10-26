@@ -20,10 +20,13 @@ The click path and talk track for each scenario are in
 ## Architecture
 
 ```
-                         Amazon EKS (eu-north-1, spot nodes, fck-nat)
- +-------------------------------------------------------------------------------+
+   Browser: bank UI (OpenTelemetry web SDK, RUM)
+                     |  HTTPS: CloudFront + AWS WAF -> Classic Load Balancer
+                     |  (/api/* and /v1/traces RUM export, same origin)
+                     |     Amazon EKS (eu-north-1, spot nodes, fck-nat)
+ +-------------------|-----------------------------------------------------------+
  |  namespace: banking                                                           |
- |                                                                               |
+ |                   v                                                           |
  |  k6 loadgen --> web-banking --> transfer-service --+--> fraud-check           |
  |                 (Node.js BFF)   (Java, Spring Boot)|    (.NET, ASP.NET Core)  |
  |                                                    +--> accounts-ledger       |
@@ -163,6 +166,33 @@ terraform -chdir=terraform output -raw control_panel_url
   `elastic` password, which is kept out of the cluster.
 - **Drift:** like the scripts, the panel changes Helm-managed objects. A later
   `terraform apply` resets them to their defaults.
+
+## Bank web UI (browser RUM)
+
+`web-banking` serves a small customer-facing page: account balance and a transfer form,
+calling the same `/api` routes as the load generator.
+
+```bash
+terraform -chdir=terraform output -raw web_banking_url
+```
+
+- **RUM:** the page uses the OpenTelemetry JS web SDK (`apps/web-banking/frontend`,
+  bundled with esbuild at image build). It records page loads, `fetch` calls and one span
+  per user action (`Check balance`, `Submit transfer`) as service `web-banking-frontend`.
+  The fetch instrumentation sends a W3C `traceparent` to `/api`, so the browser span is
+  the root of the backend trace. The page shows the `trace.id` of each action.
+- **Export path:** the browser posts OTLP/HTTP to `/v1/traces` on the same origin
+  (no CORS, the collector is not exposed). web-banking forwards it to the node's EDOT
+  collector (`OTEL_EXPORTER_OTLP_ENDPOINT`, set by the OTel Operator). The browser sends
+  an unsampled `traceparent` with each export, so the backend records no spans for the
+  forwarding itself.
+- **Access:** a second CloudFront distribution, same pattern as the control panel. It
+  shares the control panel's WAF ACL, so `control_panel_allowed_cidrs` applies to both.
+  web-banking listens on 8081 for this traffic (Service `web-banking-public`, a Classic
+  Load Balancer) and returns 403 without the `X-Origin-Verify` secret. Port 8080 stays
+  in-cluster for the load generator and probes.
+- **Data:** only real browser sessions produce RUM spans; the load generator calls the API
+  directly. Send a transfer before showing the service map.
 
 ## Running the scenarios
 

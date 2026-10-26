@@ -142,6 +142,8 @@ resource "helm_release" "demo_app" {
   values = [yamlencode({
     instrumentationRef = var.instrumentation_ref
     appVersion         = var.app_version
+    originSecret       = random_password.web_banking_origin.result
+    loadBalancerTags   = join(",", [for k, v in var.tags : "${k}=${v}"])
     loadgen = {
       rate = var.loadgen_rate
     }
@@ -324,6 +326,73 @@ resource "aws_cloudfront_distribution" "control_panel" {
 
   default_cache_behavior {
     target_origin_id         = "demo-control-panel"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    cache_policy_id          = local.cache_policy_caching_disabled
+    origin_request_policy_id = local.origin_request_policy_all_viewer_except_host
+    compress                 = true
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
+# ---------------------------------------------------------------------------
+# web-banking browser UI (RUM): same pattern as the control panel. CloudFront
+# terminates HTTPS and adds X-Origin-Verify; the open Classic Load Balancer in
+# front of web-banking's public port only gets answers with that secret. The
+# control panel's WAF ACL is reused, so the same IP allowlist applies.
+# ---------------------------------------------------------------------------
+resource "random_password" "web_banking_origin" {
+  length  = 48
+  special = false
+}
+
+data "kubernetes_service_v1" "web_banking_public" {
+  metadata {
+    name      = "web-banking-public"
+    namespace = helm_release.demo_app.namespace
+  }
+
+  depends_on = [helm_release.demo_app]
+}
+
+resource "aws_cloudfront_distribution" "web_banking" {
+  enabled             = true
+  comment             = "${var.prefix} web-banking"
+  price_class         = "PriceClass_100"
+  web_acl_id          = aws_wafv2_web_acl.control_panel.arn
+  default_root_object = "index.html"
+  # The WAF allowlist is IPv4 only; with IPv6 on, dual-stack viewers would be blocked.
+  is_ipv6_enabled = false
+
+  origin {
+    origin_id   = "web-banking"
+    domain_name = data.kubernetes_service_v1.web_banking_public.status[0].load_balancer[0].ingress[0].hostname
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = random_password.web_banking_origin.result
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id         = "web-banking"
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods           = ["GET", "HEAD"]

@@ -1,0 +1,45 @@
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.publicPort }}
+{{- if not $.Values.originSecret }}
+{{- fail (printf "originSecret is required: %s has a publicPort behind an open LoadBalancer" $name) }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-origin
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "demo-app.labels" $ | nindent 4 }}
+type: Opaque
+stringData:
+  origin-secret: {{ $.Values.originSecret | quote }}
+---
+# Classic Load Balancer from the EKS legacy cloud provider. It is the CloudFront
+# origin, so it is open to the internet; the app rejects requests on the public
+# port without the CloudFront X-Origin-Verify header, and the IP allowlist is
+# enforced by AWS WAF on CloudFront.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-public
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "demo-app.labels" $ | nindent 4 }}
+  {{- with $.Values.loadBalancerTags }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: {{ . | quote }}
+  {{- end }}
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: public
+      protocol: TCP
+{{- end }}
+{{- end }}

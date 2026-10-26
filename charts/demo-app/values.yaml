@@ -7,6 +7,11 @@ environment: banking-demo
 
 imagePullPolicy: IfNotPresent
 
+# Services with publicPort get a second listener behind a LoadBalancer (CloudFront
+# origin). The app only answers it with the X-Origin-Verify secret below (set by Terraform).
+originSecret: ""
+loadBalancerTags: ""     # "k=v,k=v" for the Kubernetes-created load balancer
+
 # fault-config ConfigMap, mounted at /etc/fault/ in every service
 faults:
   LATENCY_MS: "0"     # transfer-service added delay (ms)
@@ -22,6 +27,7 @@ services:
       repository: web-banking
       tag: "1.4.2"
     port: 8080
+    publicPort: 8081     # browser UI + API via CloudFront
     livenessPath: /healthz
     readinessPath: /healthz
     env:

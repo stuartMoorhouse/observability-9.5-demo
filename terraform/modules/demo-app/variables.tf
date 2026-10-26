@@ -48,7 +48,7 @@ variable "kibana_url" {
 }
 
 variable "control_panel_allowed_cidrs" {
-  description = "IPv4 CIDRs allowed through the AWS WAF on the demo-control-panel CloudFront distribution"
+  description = "IPv4 CIDRs allowed through the AWS WAF on the demo-control-panel and web-banking CloudFront distributions"
   type        = list(string)
 
   validation {
@@ -58,7 +58,7 @@ variable "control_panel_allowed_cidrs" {
 }
 
 variable "tags" {
-  description = "Org tags applied to the control panel's load balancer (it is created by Kubernetes, outside provider default_tags)"
+  description = "Org tags applied to the control panel and web-banking load balancers (created by Kubernetes, outside provider default_tags)"
   type        = map(string)
   default     = {}
 }

@@ -79,7 +79,7 @@ variable "eks_api_allowed_cidrs" {
 }
 
 variable "control_panel_allowed_cidrs" {
-  description = "CIDRs allowed to reach the demo-control-panel (AWS WAF allowlist on its CloudFront distribution). Empty = only the public IP of the machine running Terraform (re-apply if it changes)."
+  description = "CIDRs allowed to reach the demo-control-panel and web-banking UI (AWS WAF allowlist on their CloudFront distributions). Empty = only the public IP of the machine running Terraform (re-apply if it changes)."
   type        = list(string)
   default     = []
 }

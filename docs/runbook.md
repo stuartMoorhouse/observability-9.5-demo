@@ -5,7 +5,8 @@ customer-facing story is simple: customers make payment transfers in the web
 banking app, and the bank needs to know, before customers complain, when
 transfers slow down or fail, why, and who needs to act.
 
-Application path: `web-banking` (Node.js) -> `transfer-service` (Java) ->
+Application path: the bank's browser UI (`web-banking-frontend`, OpenTelemetry
+browser RUM) -> `web-banking` (Node.js) -> `transfer-service` (Java) ->
 `fraud-check` (.NET) and `accounts-ledger` (Python, Postgres). `fx-rates`
 (Python) is onboarded live in scenario 1. Environment: `banking-demo`.
 
@@ -38,8 +39,10 @@ and `reset-demo.sh --full` still need the terminal. See the README,
    - `demo-viewer` - `terraform output -raw demo_viewer_password`
 5. Present as `demo-sre`. Set the time picker to **Last 15 minutes**,
    refresh every 10 s.
-6. Open tabs: Observability > Applications > Service inventory, Service map,
-   SLOs, Alerts, Discover (ES|QL), Dashboards.
+6. Open tabs: the bank UI (`terraform output -raw web_banking_url`),
+   Observability > Applications > Service inventory, Service map, SLOs,
+   Alerts, Discover (ES|QL), Dashboards. Send one transfer in the bank UI so
+   `web-banking-frontend` is on the service map.
 7. If the SLO budget is depleted from rehearsals, reset it (SLOs > select the
    SLO > Actions > Reset).
 
@@ -99,15 +102,16 @@ start of scenario 1).
 
 | Step | Action | Talk track |
 |---|---|---|
-| 1 | Observability > Alerts: the latency / error-rate alert for `transfer-service` (or `fraud-check`). Open the alert details. | "Customers' transfers are slowing down. We were told by the platform, not by the contact centre." |
-| 2 | Service map (environment `banking-demo`): alert badge on the affected node; SLO and anomaly indicators on the service. Click the node > Service details. | "One view tells us which hop is unhealthy and whether it is burning the SLO." |
-| 3 | Service overview: latency and failed transaction rate charts. Note the version comparison (bad-version: `2.0.0` appears next to `1.4.2`). | "A new version went out at the same time the regression started." |
-| 4 | Transactions > `POST /transfer` > **Latency correlations** / **Failed transaction correlations**. | "Elastic compares slow or failed transactions with healthy ones and ranks the attributes that explain the difference. Here `service.version: 2.0.0` is at the top." |
-| 5 | Pick a slow sample > **Trace waterfall**. For slow-db, expand the `accounts-ledger` span and the Postgres child span with `pg_sleep`. For errors, open the span error and the `LedgerContractMismatchException` (bad-version) or HTTP 500 exception (errors). | "End-to-end trace across Node, Java, .NET and Python, and the exact span where the time goes." |
-| 6 | Still on the trace sample, open the **Logs** tab (next to Timeline and Metadata). Bad-version: the `ERROR Ledger contract mismatch ...` line from transfer-service. Errors: `Unhandled exception processing /score` from fraud-check. Slow-db: `WARN Slow ledger query ...` from accounts-ledger. Every service in the trace contributes lines (web-banking `transfer processed`, fraud-check `Scored transfer ...`, accounts-ledger `Posted debit ...`). | "These are the application logs for this one request, from all four services and languages. No SDK code in the apps, no log parsing: the EDOT agents write the trace id on every log record." |
-| 7 | Click a log line > open its details > **trace.id** / "View trace" to go from log back to the trace. | "It works both ways: whoever starts from a log line gets the full request in one click." |
-| 8 | Discover, ES|QL `FROM traces-*` (or a `traces-*` data view). Filter to a failing transfer (`service.name == "transfer-service" AND status.code == "Error"`), expand a row. The **Overview** tab shows the trace summary and a **Logs** section with the correlated logs; **Open in Discover** opens them as a log list (technical preview). | "The same correlation in Discover, for teams that live in logs and traces rather than the APM UI." |
-| 9 | Discover > ES|QL. Run the queries below (the second one is all logs for the trace you just opened). | "And when the out-of-the-box views are not enough, every signal is queryable with one language." |
+| 1 | Bank UI (`terraform output -raw web_banking_url`): send a transfer. With the fault on it is slow, fails or is declined. Copy the `trace.id` shown under the result. | "This is what the customer sees. Every click is traced in the browser, so the trace starts here, not at the first server." |
+| 2 | Observability > Alerts: the latency / error-rate alert for `transfer-service` (or `fraud-check`). Open the alert details. | "Customers' transfers are slowing down. We were told by the platform, not by the contact centre." |
+| 3 | Service map (environment `banking-demo`): alert badge on the affected node; SLO and anomaly indicators on the service. Click the node > Service details. | "One view tells us which hop is unhealthy and whether it is burning the SLO." |
+| 4 | Service overview: latency and failed transaction rate charts. Note the version comparison (bad-version: `2.0.0` appears next to `1.4.2`). | "A new version went out at the same time the regression started." |
+| 5 | Transactions > `POST /transfer` > **Latency correlations** / **Failed transaction correlations**. | "Elastic compares slow or failed transactions with healthy ones and ranks the attributes that explain the difference. Here `service.version: 2.0.0` is at the top." |
+| 6 | Pick a slow sample > **Trace waterfall** (or open the bank UI's `trace.id` from step 1: the browser span `Submit transfer` is the root, above `web-banking`). For slow-db, expand the `accounts-ledger` span and the Postgres child span with `pg_sleep`. For errors, open the span error and the `LedgerContractMismatchException` (bad-version) or HTTP 500 exception (errors). | "End-to-end trace across Node, Java, .NET and Python, and the exact span where the time goes." |
+| 7 | Still on the trace sample, open the **Logs** tab (next to Timeline and Metadata). Bad-version: the `ERROR Ledger contract mismatch ...` line from transfer-service. Errors: `Unhandled exception processing /score` from fraud-check. Slow-db: `WARN Slow ledger query ...` from accounts-ledger. Every service in the trace contributes lines (web-banking `transfer processed`, fraud-check `Scored transfer ...`, accounts-ledger `Posted debit ...`). | "These are the application logs for this one request, from all four services and languages. No SDK code in the apps, no log parsing: the EDOT agents write the trace id on every log record." |
+| 8 | Click a log line > open its details > **trace.id** / "View trace" to go from log back to the trace. | "It works both ways: whoever starts from a log line gets the full request in one click." |
+| 9 | Discover, ES|QL `FROM traces-*` (or a `traces-*` data view). Filter to a failing transfer (`service.name == "transfer-service" AND status.code == "Error"`), expand a row. The **Overview** tab shows the trace summary and a **Logs** section with the correlated logs; **Open in Discover** opens them as a log list (technical preview). | "The same correlation in Discover, for teams that live in logs and traces rather than the APM UI." |
+| 10 | Discover > ES|QL. Run the queries below (the second one is all logs for the trace you just opened). | "And when the out-of-the-box views are not enough, every signal is queryable with one language." |
 
 ES|QL examples (paste into Discover, mode ES|QL):
 
@@ -285,5 +289,7 @@ that date. See README.md, Teardown.
 | kubectl cannot reach `banking` | `aws eks update-kubeconfig --name $(terraform output -raw cluster_name) --region $(terraform output -raw aws_region) --profile $(terraform output -raw aws_profile)` |
 | No traces for a service | Pod has an `opentelemetry-auto-instrumentation-*` init container; `kubectl -n opentelemetry-operator-system get pods`; load generator running |
 | Trace sample Logs tab is empty, or a service is missing from it | `scripts/validate.sh --only 5` (shows `log->trace=no` per service). Check the service's log export setting in the table under scenario 2; the time picker must cover the trace |
+| Bank UI spans missing (`web-banking-frontend` not in APM) | Browser dev tools > Network: `POST /v1/traces` should return 200. 403 means the request bypassed CloudFront; 503 means the web-banking pod has no `OTEL_EXPORTER_OTLP_ENDPOINT` (not auto-instrumented). `scripts/test-runbook.sh` check R7 posts a test span through the same path |
+| Bank UI returns 403 from CloudFront | Your IP is not in `control_panel_allowed_cidrs` (the WAF ACL is shared with the control panel) |
 | No new burn-rate alert | A previous alert is still active; wait for recovery or reset the SLO |
 | AI Assistant not responding | Managed LLM connector in Stack Management > Connectors; user is `demo-sre` |

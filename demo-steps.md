@@ -15,7 +15,7 @@ Every scenario step that uses `fault-inject.sh`, `onboard-service.sh`, `generate
 2. `scripts/reset-demo.sh --full` - faults off, fx-rates removed, SLOs reset, alerts cleared.
 3. Log in to three browser profiles: `elastic`, `demo-sre`, `demo-viewer`
    (`terraform -chdir=terraform output -raw <user>_password`).
-4. Open tabs: demo control panel, Service inventory, Service map, SLOs, Alerts, Discover (ES|QL), Dashboards.
+4. Open tabs: demo control panel, bank UI (`terraform -chdir=terraform output -raw web_banking_url`), Service inventory, Service map, SLOs, Alerts, Discover (ES|QL), Dashboards.
 5. About 15 min before scenario 4, start `scripts/slo-breach.sh --keep-fault` (or control panel > SLO breach **Start**, which skips
    the detection-delay measurement). This fault also drives scenarios 2 and 3.
 
@@ -39,13 +39,14 @@ Every scenario step that uses `fault-inject.sh`, `onboard-service.sh`, `generate
 Start the fault 5 min ahead. Use `bad-version` for the correlations story and `slow-db` for the trace story:
 Control panel > Bad release / Slow DB **On** (or `scripts/fault-inject.sh bad-version on` / `slow-db on`).
 
-1. **Alert:** Observability > Alerts > open the `transfer-service` alert.
-2. **Service map:** the affected node shows alert, SLO and anomaly badges.
-3. **Service overview:** the latency and failure charts show version `2.0.0` alongside `1.4.2`.
-4. **Correlations:** `POST /transfer` > Latency / Failed transaction correlations. `service.version: 2.0.0` ranks first.
-5. **Trace:** open a slow sample's waterfall. It shows the slow Postgres span (slow-db) or the exception (bad-version).
-6. **Logs:** open the logs for this trace (filtered by `trace.id`).
-7. **Metrics in ES|QL:** in Discover, run the queries from the runbook (traces by version, errors by service, pod CPU).
+1. **Customer view:** bank UI, send a transfer. It is slow, fails or is declined. Copy the `trace.id` under the result.
+2. **Alert:** Observability > Alerts > open the `transfer-service` alert.
+3. **Service map:** the affected node shows alert, SLO and anomaly badges.
+4. **Service overview:** the latency and failure charts show version `2.0.0` alongside `1.4.2`.
+5. **Correlations:** `POST /transfer` > Latency / Failed transaction correlations. `service.version: 2.0.0` ranks first.
+6. **Trace:** open a slow sample's waterfall (or the bank UI's `trace.id`: the browser span `Submit transfer` is the root). It shows the slow Postgres span (slow-db) or the exception (bad-version).
+7. **Logs:** open the logs for this trace (filtered by `trace.id`).
+8. **Metrics in ES|QL:** in Discover, run the queries from the runbook (traces by version, errors by service, pod CPU).
 
 ## 3. AI-assisted triage (~8 min)
 

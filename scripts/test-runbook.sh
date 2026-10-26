@@ -19,6 +19,8 @@
 #    R4 one trace has logs from all four base services (trace Logs tab)
 #    R5 every ```esql block in docs/runbook.md runs and returns rows
 #    R6 demo control panel answers
+#    R7 bank UI answers via CloudFront, its API works, and an OTLP span posted to
+#       its /v1/traces RUM endpoint reaches traces-* as web-banking-frontend
 # 4. scripts/reset-demo.sh --full --keep-fx-rates, then validate.sh
 #    --slo-breach 9-10 (scenario 4 burn-rate alert and email)
 # 5. scripts/reset-demo.sh --full. Always runs, also after a failure or Ctrl-C.
@@ -180,6 +182,46 @@ check_control_panel() {
   fi
 }
 
+check_bank_ui() {
+  local url body code trace_id now payload found=0 i
+  url="$(tf_out_opt web_banking_url)"
+  [[ -n "${url}" ]] || { record R7 FAIL "Bank UI and RUM endpoint" "terraform output web_banking_url is empty"; return; }
+  body="$(curl -s -w '\n%{http_code}' --connect-timeout "${CURL_CONNECT_TIMEOUT}" --max-time 30 "${url}/" || echo 000)"
+  code="${body##*$'\n'}"
+  if [[ "${code}" != "200" ]] || ! grep -q "Demo Bank" <<<"${body}"; then
+    record R7 FAIL "Bank UI and RUM endpoint" "${url}/ -> HTTP ${code}"; return
+  fi
+  code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout "${CURL_CONNECT_TIMEOUT}" --max-time 30 "${url}/api/accounts/ACC-1001/balance" || echo 000)"
+  [[ "${code}" == "200" ]] || { record R7 FAIL "Bank UI and RUM endpoint" "${url}/api/accounts/ACC-1001/balance -> HTTP ${code}"; return; }
+
+  # Same request the browser exporter makes (OTLP/HTTP JSON, unsampled traceparent).
+  trace_id="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  now="$(($(epoch_now) * 1000000000))"
+  payload="$(jq -nc --arg t "${trace_id}" --arg s "$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')" --arg start "${now}" --arg end "$((now + 50000000))" '{
+    resourceSpans: [{
+      resource: {attributes: [
+        {key: "service.name", value: {stringValue: "web-banking-frontend"}},
+        {key: "telemetry.sdk.language", value: {stringValue: "webjs"}}]},
+      scopeSpans: [{scope: {name: "test-runbook"}, spans: [{
+        traceId: $t, spanId: $s, name: "R7 synthetic RUM span", kind: 1,
+        startTimeUnixNano: $start, endTimeUnixNano: $end}]}]}]}')"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout "${CURL_CONNECT_TIMEOUT}" --max-time 30 \
+    -H 'content-type: application/json' -H 'traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00' \
+    --data "${payload}" "${url}/v1/traces" || echo 000)"
+  [[ "${code}" == "200" ]] || { record R7 FAIL "Bank UI and RUM endpoint" "POST ${url}/v1/traces -> HTTP ${code}"; return; }
+
+  for i in $(seq 1 12); do
+    found="$(esql_one "FROM traces-*.otel-* | WHERE trace.id == \"${trace_id}\" AND service.name == \"web-banking-frontend\" | STATS c = COUNT(*)" | jq -r '.c // 0')"
+    [[ "${found}" -gt 0 ]] && break
+    sleep 10
+  done
+  if [[ "${found}" -gt 0 ]]; then
+    record R7 PASS "Bank UI and RUM endpoint" "${url} -> UI and API HTTP 200; RUM span ${trace_id} indexed as web-banking-frontend"
+  else
+    record R7 FAIL "Bank UI and RUM endpoint" "RUM span ${trace_id} accepted (HTTP 200) but not in traces-*.otel-* after 2 min"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 main() {
   require_cmd jq curl kubectl terraform awk
@@ -213,6 +255,7 @@ main() {
   check_runbook_esql "${LAST_FAULT_TRACE:-none}"
   check_control_panel
   "${SCRIPTS_DIR}/fault-inject.sh" all off >/dev/null
+  check_bank_ui
 
   if [[ "${RUN_SLO_BREACH}" == "true" ]]; then
     print_step "4/5 Reset (keep fx-rates), then scenario 4 SLO breach"
@@ -243,6 +286,8 @@ main() {
 Results: ${out_file}
 
 Check by eye during a rehearsal (no API for these):
+  - Bank UI: a transfer in the browser shows web-banking-frontend as the root of the
+    trace waterfall, and on the service map in front of web-banking
   - Scenario 1: fx-rates node and edge on the service map
   - Scenario 2: alert badge on the service map, correlations ranking in the APM UI,
     trace sample Logs tab and Discover trace Logs section render
