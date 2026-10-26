@@ -10,7 +10,7 @@ The demo covers five scenarios:
 
 1. Self-service Kubernetes onboarding of a new service
 2. Incident to root cause (alert, service map, correlations, traces, logs, ES|QL)
-3. AI-assisted triage, AI off, and per-role AI restriction
+3. AI-assisted triage (3a) and AI access control by role (3b)
 4. SLO burn-rate alerting with a measured detection delay
 5. Observability as code (dashboards from Git, export from the UI)
 
