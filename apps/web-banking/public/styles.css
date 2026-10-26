@@ -122,5 +122,3 @@ button.secondary {
 .result.error { background: var(--error-bg); color: var(--error-text); }
 .result .message { font-weight: 600; }
 .result .detail:empty { display: none; }
-.trace-line { margin-top: 6px; opacity: 0.85; }
-.trace-line code { font-size: 0.8rem; word-break: break-all; }

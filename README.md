@@ -182,7 +182,7 @@ terraform -chdir=terraform output -raw web_banking_url
   bundled with esbuild at image build). It records page loads, `fetch` calls and one span
   per user action (`Check balance`, `Submit transfer`) as service `web-banking-frontend`.
   The fetch instrumentation sends a W3C `traceparent` to `/api`, so the browser span is
-  the root of the backend trace. The page shows the `trace.id` of each action.
+  the root of the backend trace.
 - **Export path:** the browser posts OTLP/HTTP to `/v1/traces` on the same origin
   (no CORS, the collector is not exposed). web-banking forwards it to the node's EDOT
   collector (`OTEL_EXPORTER_OTLP_ENDPOINT`, set by the OTel Operator). The browser sends

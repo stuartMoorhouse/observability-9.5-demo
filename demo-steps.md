@@ -39,12 +39,12 @@ Every scenario step that uses `fault-inject.sh`, `onboard-service.sh`, `generate
 Start the fault 5 min ahead. Use `bad-version` for the correlations story and `slow-db` for the trace story:
 Control panel > Bad release / Slow DB **On** (or `scripts/fault-inject.sh bad-version on` / `slow-db on`).
 
-1. **Customer view:** bank UI, send a transfer. It is slow, fails or is declined. Copy the `trace.id` under the result.
+1. **Customer view:** bank UI, send a transfer. It is slow, fails or is declined.
 2. **Alert:** Observability > Alerts > open the `transfer-service` alert.
 3. **Service map:** the affected node shows alert, SLO and anomaly badges.
 4. **Service overview:** the latency and failure charts show version `2.0.0` alongside `1.4.2`.
 5. **Correlations:** `POST /transfer` > Latency / Failed transaction correlations. `service.version: 2.0.0` ranks first.
-6. **Trace:** open a slow sample's waterfall (or the bank UI's `trace.id`: the browser span `Submit transfer` is the root). It shows the slow Postgres span (slow-db) or the exception (bad-version).
+6. **Trace:** open a slow sample's waterfall (or APM > `web-banking-frontend` > `Submit transfer` for your own transfer: the browser span is the root). It shows the slow Postgres span (slow-db) or the exception (bad-version).
 7. **Logs:** open the logs for this trace (filtered by `trace.id`).
 8. **Metrics in ES|QL:** in Discover, run the queries from the runbook (traces by version, errors by service, pod CPU).
 

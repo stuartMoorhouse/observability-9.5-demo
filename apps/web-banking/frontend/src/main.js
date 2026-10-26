@@ -1,7 +1,6 @@
 // Demo bank UI: balance lookup and transfer form against the web-banking /api routes.
 // Each user action is a named root span ("Check balance", "Submit transfer"); the
-// instrumented fetch inside it continues the trace into the backend. The trace ID is
-// shown on screen so the presenter can paste it into Kibana.
+// instrumented fetch inside it continues the trace into the backend.
 
 import { SpanStatusCode } from '@opentelemetry/api';
 import { tracer } from './rum';
@@ -18,11 +17,11 @@ function traced(name, attributes, fn) {
       if (result.status >= 500) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: `HTTP ${result.status}` });
       }
-      return { ...result, traceId: span.spanContext().traceId };
+      return result;
     } catch (err) {
       span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
-      return { ok: false, status: 0, body: { error: err.message }, traceId: span.spanContext().traceId };
+      return { ok: false, status: 0, body: { error: err.message } };
     } finally {
       span.end();
     }
@@ -39,13 +38,12 @@ function money(amount, currency) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
 }
 
-function showResult(el, { ok, status, body, traceId }, message) {
+function showResult(el, { ok, status, body }, message) {
   el.hidden = false;
   el.className = `result ${ok ? 'ok' : 'error'}`;
   el.querySelector('.message').textContent = message;
   const reason = (body.reasons || []).join(', ') || body.error || body.message || 'request failed';
   el.querySelector('.detail').textContent = ok ? '' : `HTTP ${status || 'network error'}: ${reason}`;
-  el.querySelector('.trace').textContent = traceId;
 }
 
 async function loadBalance() {
