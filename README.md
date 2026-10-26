@@ -142,7 +142,7 @@ terraform -chdir=terraform output -raw control_panel_url
   instrumented and how the signals reach Elastic Cloud.
 - **Trigger errors tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
   the scenario 4 SLO breach (3000 ms), load rate and reset. It shows live fault, release,
-  load and fx-rates state, and links to Kibana.
+  load and fx-rates state, and links to the bank UI and Kibana.
 - **Demo architecture tab:** shows `apps/demo-control-panel/static/architecture.png`
   (or `.svg`) once that file exists. Add it and run `terraform apply` to rebuild the image.
 - **Access:** HTTPS through a CloudFront distribution (`https://<id>.cloudfront.net`,

@@ -218,6 +218,7 @@ resource "helm_release" "demo_control_panel" {
     originSecret     = random_password.control_panel_origin.result
     loadBalancerTags = join(",", [for k, v in var.tags : "${k}=${v}"])
     kibanaUrl        = var.kibana_url
+    bankUrl          = "https://${aws_cloudfront_distribution.web_banking.domain_name}"
     baseVersion      = var.app_version
     defaultLoadRate  = var.loadgen_rate
     fxRatesManifests = jsonencode(local.fx_rates_objects)

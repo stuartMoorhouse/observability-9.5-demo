@@ -28,6 +28,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(os.environ.get("PORT", "8080"))
 NAMESPACE = os.environ.get("NAMESPACE", "banking")
 KIBANA_URL = os.environ.get("KIBANA_URL", "").rstrip("/")
+# web-banking browser UI (its own CloudFront distribution).
+BANK_URL = os.environ.get("BANK_URL", "").rstrip("/")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "banking-demo")
 BASE_VERSION = os.environ.get("BASE_VERSION", "1.4.2")
 BAD_VERSION = os.environ.get("BAD_VERSION", "2.0.0")
@@ -261,8 +263,10 @@ def status():
 def config():
     env = urllib.parse.quote(ENVIRONMENT)
     links = []
+    if BANK_URL:
+        links.append({"label": "Bank UI", "url": f"{BANK_URL}/"})
     if KIBANA_URL:
-        links = [
+        links += [
             {"label": "Service inventory", "url": f"{KIBANA_URL}/app/apm/services?environment={env}"},
             {"label": "Service map", "url": f"{KIBANA_URL}/app/apm/service-map?environment={env}"},
             {"label": "Alerts", "url": f"{KIBANA_URL}/app/observability/alerts"},
@@ -278,7 +282,7 @@ def config():
         "base_version": BASE_VERSION,
         "bad_version": BAD_VERSION,
         "defaults": {"latency_ms": DEFAULT_LATENCY_MS, "error_rate": DEFAULT_ERROR_RATE, "load_rate": DEFAULT_LOAD_RATE},
-        "kibana_links": links,
+        "links": links,
         "architecture": arch,
     }
 

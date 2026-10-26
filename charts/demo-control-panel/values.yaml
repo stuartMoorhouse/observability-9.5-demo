@@ -9,6 +9,8 @@ originSecret: ""
 loadBalancerTags: ""
 
 kibanaUrl: ""
+# web-banking browser UI URL, shown first in the links bar
+bankUrl: ""
 environment: banking-demo
 baseVersion: "1.4.2"
 badVersion: "2.0.0"

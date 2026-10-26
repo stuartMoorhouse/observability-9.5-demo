@@ -71,6 +71,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: KIBANA_URL
               value: {{ .Values.kibanaUrl | quote }}
+            - name: BANK_URL
+              value: {{ .Values.bankUrl | quote }}
             - name: ENVIRONMENT
               value: {{ .Values.environment | quote }}
             - name: BASE_VERSION

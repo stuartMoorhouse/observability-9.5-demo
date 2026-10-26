@@ -360,7 +360,7 @@ async function init() {
     $("v-errors").value = cfg.defaults.error_rate;
     $("v-load").value = cfg.defaults.load_rate;
     document.querySelectorAll(".bad-v").forEach((n) => (n.textContent = `${cfg.base_version} -> ${cfg.bad_version}`));
-    $("links").replaceChildren(...cfg.kibana_links.map((l) =>
+    $("links").replaceChildren(...cfg.links.map((l) =>
       el("a", { href: l.url, target: "_blank", rel: "noopener", textContent: l.label + " ↗" })));
   } catch (e) {
     log("Could not load config: " + e.message, null, true);
