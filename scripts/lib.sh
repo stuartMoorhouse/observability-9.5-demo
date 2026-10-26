@@ -55,7 +55,7 @@ epoch_now() { date -u +%s; }
 _log() {
   local level="$1"
   shift
-  printf '%s [%-5s] %s\n' "$(utc_now)" "${level}" "$*" >&2
+  printf '%s [%s] %s\n' "$(utc_now)" "${level}" "$*" >&2
 }
 info() { _log INFO "$@"; }
 warn() { _log WARN "$@"; }

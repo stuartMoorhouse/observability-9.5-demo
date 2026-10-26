@@ -140,11 +140,13 @@ terraform -chdir=terraform output -raw control_panel_url
 
 - **Demo scenario tab (default):** the persona and situation, how the app works, how it is
   instrumented and how the signals reach Elastic Cloud.
-- **Trigger errors tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
-  the scenario 4 SLO breach (3000 ms), load rate and reset. It shows live fault, release,
-  load and fx-rates state, and links to the bank UI and Kibana.
 - **Demo architecture tab:** shows `apps/demo-control-panel/static/architecture.png`
   (or `.svg`) once that file exists. Add it and run `terraform apply` to rebuild the image.
+- **Links tab:** the bank UI and the Kibana pages used in the demo (service inventory,
+  service map, alerts, SLOs, Discover, dashboards).
+- **Trigger errors tab:** fx-rates onboard/remove, bad release, slow DB, errors, latency,
+  the scenario 4 SLO breach (3000 ms), load rate and reset. It shows live fault, release,
+  load and fx-rates state.
 - **Access:** HTTPS through a CloudFront distribution (`https://<id>.cloudfront.net`,
   CloudFront's default certificate). AWS WAF on the distribution only admits
   `control_panel_allowed_cidrs` (IPv4), which defaults to the public IP of the machine
