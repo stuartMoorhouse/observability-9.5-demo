@@ -1,0 +1,45 @@
+String st = ctx.attributes.get('exception.stacktrace');
+String[] libJava = new String[] {'java.', 'javax.', 'jdk.', 'sun.', 'com.sun.', 'org.springframework.', 'org.apache.', 'io.opentelemetry.', 'io.micrometer.', 'ch.qos.'};
+String[] libPy = new String[] {'site-packages', 'dist-packages', '/otel-auto-instrumentation', '/usr/lib/python', '/usr/local/lib/python'};
+String app = null;
+String first = null;
+String pyApp = null;
+String pyLast = null;
+for (String raw : /\n/.split(st)) {
+  String line = raw.trim();
+  Matcher m = /^File "([^"]+)", line (\d+), in (.+)$/.matcher(line);
+  if (m.matches()) {
+    String f = m.group(3) + ' (' + m.group(1) + ':' + m.group(2) + ')';
+    pyLast = f;
+    boolean lib = false;
+    for (String p : libPy) { if (m.group(1).contains(p)) { lib = true; } }
+    if (!lib) { pyApp = f; }
+    continue;
+  }
+  if (app != null) { continue; }
+  m = /^at (.+) in (.+):line (\d+)$/.matcher(line);
+  if (m.matches()) {
+    app = m.group(1) + ' (' + m.group(2) + ':' + m.group(3) + ')';
+    continue;
+  }
+  m = /^at ([^\s(]+)\(([^:()]+):(\d+)\)$/.matcher(line);
+  if (m.matches()) {
+    String f = m.group(1) + ' (' + m.group(2) + ':' + m.group(3) + ')';
+    if (first == null) { first = f; }
+    boolean lib = false;
+    for (String p : libJava) { if (m.group(1).startsWith(p)) { lib = true; } }
+    if (!lib) { app = f; }
+    continue;
+  }
+  m = /^at (?:async )?(?:(.+?) \()?([^()\s]+):(\d+):\d+\)?$/.matcher(line);
+  if (m.matches()) {
+    String fn = m.group(1) == null ? '<anonymous>' : m.group(1);
+    String f = fn + ' (' + m.group(2) + ':' + m.group(3) + ')';
+    if (first == null) { first = f; }
+    if (!m.group(2).startsWith('node:') && !m.group(2).contains('/node_modules/')) { app = f; }
+    continue;
+  }
+  if (first == null && line.startsWith('at ')) { first = line.substring(3); }
+}
+String culprit = pyApp != null ? pyApp : (app != null ? app : (pyLast != null ? pyLast : first));
+if (culprit != null) { ctx.attributes.put('error.culprit', culprit); }
