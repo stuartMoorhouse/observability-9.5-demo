@@ -165,8 +165,8 @@ terraform -chdir=terraform output -raw control_panel_url
 - **fx-rates:** onboarding applies the objects rendered from `charts/fx-rates` through the
   Kubernetes API, not `helm install`. `scripts/onboard-service.sh uninstall` and
   `scripts/reset-demo.sh` remove them either way.
-- **Elastic-side work stays in scripts:** the SLO reset and dashboard redeploy
-  (`reset-demo.sh --full`) and the measured detection delay (`detection-delay.sh`) need the
+- **Elastic-side work stays in scripts:** the SLO reset, dashboard redeploy and
+  history deletion (`reset-demo.sh --full`) and the measured detection delay (`detection-delay.sh`) need the
   `elastic` password, which is kept out of the cluster.
 - **Drift:** like the scripts, the panel changes Helm-managed objects. A later
   `terraform apply` resets them to their defaults.
@@ -210,7 +210,7 @@ See [docs/runbook.md](docs/runbook.md). Script summary:
 | `scripts/slo-breach.sh [--keep-fault]` | Validation criteria 9-10: drive a latency burn-rate breach, write `results/slo-breach-<ts>.json` |
 | `scripts/export-dashboard.sh <id\|title>` | Scenario 5: export a UI dashboard to `dashboards/<slug>.json` |
 | `scripts/generate-load.sh <rate\|start\|stop\|status>` | Control the in-cluster k6 load generator |
-| `scripts/reset-demo.sh` | Ready state for the runbook: other faults off, remove fx-rates, restore load, then turn the bad release on (`--no-fault` leaves every fault off). `--full` also resets SLOs, redeploys dashboards from Git, clears active alerts (waits up to 6 min, then untracks) and closes the AI triage cases first |
+| `scripts/reset-demo.sh` | Ready state for the runbook: other faults off, remove fx-rates, restore load, then turn the bad release on (`--no-fault` leaves every fault off). `--full` also resets SLOs, redeploys dashboards from Git, waits up to 6 min for alerts to recover, deletes the alert history, cases, AI triage workflow runs and conversations (a clean slate; cannot be undone), and only then turns the bad release on |
 | `scripts/validate.sh [--scenarios] [--slo-breach]` | Acceptance checks, writes `results/validate-<ts>.json` |
 | `scripts/test-runbook.sh [--no-slo-breach]` | End-to-end runbook test: reset, validate.sh, runbook-only checks (log correlation per fault, runbook ES\|QL queries, control panel), reset again (~25-35 min), writes `results/test-runbook-<ts>.json` |
 

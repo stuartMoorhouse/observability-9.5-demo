@@ -12,7 +12,8 @@ tags:
 
 # The error-rate rule calls this workflow through its system action (summaryMode false):
 # one run per new alert, so one run per service that starts failing. Ongoing alerts do not
-# re-run it.
+# re-run it, and a new alert for a service that already has an open triage case is attached
+# to that case instead of being investigated again.
 triggers:
   - type: alert
 
@@ -21,11 +22,38 @@ consts:
 
 steps:
   # ==========================================================================
+  # 0. One case per service per incident. An error rate close to the rule
+  #    threshold can recover and fire again as a new alert; if the service
+  #    already has an open triage case, the new alert is attached to it and
+  #    the investigation is not repeated.
+  # ==========================================================================
+  - name: find_open_case
+    type: cases.findCases
+    with:
+      owner: observability
+      tags: "{{ event.alerts[0].service.name }}"
+      status: [open, in-progress]
+      perPage: 1
+
+  - name: attach_to_open_case
+    type: cases.addAlerts
+    if: "not steps.find_open_case.output.total : 0"
+    with:
+      case_id: "{{ steps.find_open_case.output.cases[0].id }}"
+      alerts:
+        - alertId: "{{ event.alerts[0]._id }}"
+          index: "{{ event.alerts[0]._index }}"
+          rule:
+            id: "{{ event.rule.id }}"
+            name: "{{ event.rule.name }}"
+
+  # ==========================================================================
   # 1. Investigate. The agent follows the same path as scenario 2 (alert,
   #    service map, correlations, traces, logs) and returns structured output.
   # ==========================================================================
   - name: investigate
     type: ai.agent
+    if: "steps.find_open_case.output.total : 0"
     agent-id: ${agent_id}
     create-conversation: true
     timeout: 10m
@@ -78,10 +106,11 @@ steps:
 
   # ==========================================================================
   # 2. Record the findings in an Observability case. syncAlerts is false so
-  #    closing the case (reset-demo.sh --full) does not close the alert.
+  #    closing a case does not close its alert.
   # ==========================================================================
   - name: create_case
     type: cases.createCase
+    if: "steps.find_open_case.output.total : 0"
     with:
       owner: observability
       title: "AI triage: {{ event.alerts[0].service.name }} - {{ steps.investigate.output.structured_output.title }}"
@@ -123,6 +152,7 @@ steps:
   # ==========================================================================
   - name: attach_alert
     type: cases.addAlerts
+    if: "steps.find_open_case.output.total : 0"
     with:
       case_id: "{{ steps.create_case.output.case.id }}"
       alerts:

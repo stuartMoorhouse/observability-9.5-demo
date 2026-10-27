@@ -71,6 +71,12 @@ output "demo_viewer_password" {
   sensitive   = true
 }
 
+output "demo_reset_password" {
+  description = "Password for the demo-reset user (reset-demo.sh --full deletes workflow run history)"
+  value       = module.kibana_content.demo_reset_password
+  sensitive   = true
+}
+
 output "slo_id" {
   description = "SLO ID"
   value       = module.kibana_content.slo_id

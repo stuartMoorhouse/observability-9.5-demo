@@ -288,11 +288,16 @@ Results: ${out_file}
 
 Check by eye during a rehearsal (no API for these):
   - Bank UI: a transfer in the browser shows web-banking-frontend as the root of the
-    trace waterfall, and on the service map in front of web-banking
+    trace timeline, and on the service map in front of web-banking
   - Scenario 1: fx-rates node and edge on the service map
   - Scenario 2: alert badge on the service map, correlations ranking in the APM UI,
     trace sample Logs tab and Discover trace Logs section render
-  - Scenario 3: AI Assistant answer quality; no AI entry points as demo-viewer
+  - Scenario 3a: AI triage workflow runs, case contents and conversation link
+    (needs the bad release: run after the final reset)
+  - Scenario 3b: no AI entry points as demo-viewer; the triage conversation
+    does not open for demo-viewer
+  - Scenario 4: availability burn-rate alert from the bad release
+    (scripts/detection-delay.sh measures it)
   - Scenario 5: dashboard edit visible in Kibana after terraform apply
 EOF
   [[ "$(jq '.summary.fail' "${out_file}")" == "0" ]]

@@ -20,10 +20,9 @@ and a faulty release of transfer-service (`2.0.0`) rolling out. That release
 is the incident scenarios 2 to 4 investigate, each from a different angle.
 
 The demo control panel (`terraform output -raw control_panel_url`) has a
-button for every `fault-inject.sh`, `onboard-service.sh` and
-`generate-load.sh` command in this runbook, plus a plain reset.
-`slo-breach.sh` (measured detection delay) and `reset-demo.sh --full` need
-the terminal. See the README, "Demo control panel".
+button for every fault, onboarding and load command in this runbook, a live
+view of their state, and a plain reset. `reset-demo.sh --full`,
+`detection-delay.sh` and `slo-breach.sh` need the terminal. See the README, "Demo control panel".
 
 ## How the scenarios are organised
 
@@ -65,15 +64,18 @@ not production settings.
 
 About an hour before running the scenarios:
 
-1. `scripts/validate.sh` - all read-only checks PASS (criterion 9/10 may SKIP).
+1. `scripts/validate.sh` - all read-only checks PASS (criteria 6-9 and 14
+   SKIP; 10 SKIPs without email recipients).
    For a full rehearsal, run `scripts/test-runbook.sh` instead (~25-35 min):
-   it resets, drives every scenario through the APIs, checks the runbook's
-   ES|QL queries and log correlation, and resets again. It lists the UI-only
-   steps to check by eye at the end.
-2. `scripts/reset-demo.sh --full` - resets the SLOs, clears active alerts,
-   closes the AI triage cases from the previous run, removes fx-rates, turns
-   the other faults off and then turns on the bad
-   release for scenarios 2-4. It takes ~1 min, or up to ~7 min when a fault
+   it resets, drives scenarios 1, 2 and 3b and the scenario 2 faults through
+   the APIs, raises a latency SLO breach, checks the runbook's ES|QL queries,
+   log correlation and the bank UI, and resets again. It lists the steps to
+   check by eye at the end, including scenario 3a and the scenario 4
+   availability alert.
+2. `scripts/reset-demo.sh --full` - resets the SLOs, deletes the history of
+   earlier runs (alerts, cases, AI triage workflow runs and conversations),
+   removes fx-rates, turns the other faults off and then turns on the bad
+   release for scenarios 2-4. It takes ~2-3 min, or up to ~8 min when a fault
    ran in the last few minutes (it waits for alerts to recover first, so the
    bad release raises a new alert against a full error budget).
 3. `scripts/fault-inject.sh status` - `APP_VERSION=2.0.0 BAD_RELEASE=true`,
@@ -118,12 +120,12 @@ investigates.
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | Open Service inventory. | Four services in environment `banking-demo`. None contains an OpenTelemetry SDK; the OTel Operator injects instrumentation when each pod starts. |
-| 2 | Open `charts/fx-rates/templates/fx-rates.yaml`. | The annotation `instrumentation.opentelemetry.io/inject-python`, the only observability configuration in the chart. |
-| 3 | Control panel > **Onboard** (or `scripts/onboard-service.sh`). | The `helm upgrade --install` that a CI/CD pipeline or GitOps tool would normally run. The script also reports how long the first traces take to arrive. |
+| 1 | Open Service inventory. | The four backend services in environment `banking-demo`, plus `web-banking-frontend` (the browser, instrumented with the OpenTelemetry web SDK). None of the backend services contains an OpenTelemetry SDK; the OTel Operator injects instrumentation when each pod starts. |
+| 2 | Open `charts/fx-rates/templates/fx-rates.yaml`. | The annotation `instrumentation.opentelemetry.io/inject-python`, the only instrumentation the chart asks for. The other OpenTelemetry settings are environment variables: service name, environment and version, and log export. |
+| 3 | `scripts/onboard-service.sh` (or control panel > **Onboard**). | The script runs the `helm upgrade --install` that a CI/CD pipeline or GitOps tool would normally run, and reports how long the first traces take to arrive. The panel's Onboard applies the same rendered chart. |
 | 4 | While it runs (pods ready ~30-60 s, first spans typically 1-3 min): Infrastructure > Kubernetes, filter namespace `banking`. | The new pod, picked up by the collector on each node with nothing to register. |
 | 5 | Refresh Service inventory, then open Service map. | `fx-rates` in the inventory, and a new `transfer-service -> fx-rates` edge drawn from traces: transfer-service calls fx-rates for cross-currency transfers. |
-| 6 | SLOs: open the transfer latency SLO. | An `fx-rates` instance (may take ~5 min to appear). The SLO was defined once, grouped by service, so a new service gets its own instance. |
+| 6 | SLOs: open **Banking transaction latency (500 ms)**. | An `fx-rates` instance (may take ~5 min to appear). The SLO was defined once, grouped by service, so a new service gets its own instance. |
 
 If fx-rates traces are slow to appear, check `scripts/generate-load.sh status`
 and the pod init container (`kubectl -n banking get pod -l app.kubernetes.io/name=fx-rates -o jsonpath='{.items[0].spec.initContainers[*].name}'`).
@@ -140,7 +142,7 @@ and the pod init container (`kubectl -n banking get pod -l app.kubernetes.io/nam
 - **On-call SREs:** a service launched last week has the same traces, logs,
   SLO and alerts as one launched years ago.
 - **Platform engineers:** the contract with application teams is one
-  annotation. The SLO, rules and anomaly job are defined once per environment
+  annotation plus the standard OpenTelemetry environment variables. The SLO, rules and anomaly job are defined once per environment
   and apply to services that don't exist yet.
 - **Application developers:** no SDK to add or keep upgrading, and deployment
   stays their normal pipeline.
@@ -182,7 +184,7 @@ release **On**, or `scripts/fault-inject.sh bad-version on`.
 | 3 | Service map (environment `banking-demo`): click `transfer-service` > Service details. | An alert badge on `transfer-service`, with SLO and anomaly indicators showing whether the problem is using up the SLO. |
 | 4 | Service overview: latency and failed transaction rate charts. | Version `2.0.0` appears next to `1.4.2` at the time the regression started. |
 | 5 | Transactions > `POST /transfer` > **Failed transaction correlations**. | `service.version: 2.0.0` ranks first among the attributes that distinguish failed transactions from successful ones. |
-| 6 | Pick a failed sample > **Trace waterfall**, and open the span error. | `LedgerContractMismatchException` ("Ledger response missing field 'postingId' (contract v2)") on the failed request. The transfer stops before it reaches fraud-check or the ledger. |
+| 6 | **Trace samples**: filter with `event.outcome: "failure"` in the search bar, then open the **Timeline** tab and the error on the `POST /transfer` transaction. | `LedgerContractMismatchException` ("Ledger response missing field 'postingId' (contract v2)") on the failed request. The transfer stops before it reaches fraud-check or the ledger, so there are no child spans below it. |
 | 7 | On the same trace sample, open the **Logs** tab. | The `ERROR Ledger contract mismatch ...` line from transfer-service and the `transfer failed` line from web-banking for this request. The applications contain no code for this: the agents add the trace id to every log record. |
 
 To open the trace of your own transfer from step 1: APM > service
@@ -233,7 +235,9 @@ records its findings in a case before anyone opens the alert.
 The workflow is **Banking alert triage**, defined in Git
 (`terraform/modules/kibana-content/workflows/alert-triage.yaml`). The
 error-rate rule runs it once for each new alert, so once per service that
-starts failing. It has three steps:
+starts failing. It first checks for an open triage case for the service: if
+one exists (the error rate dipped under the threshold and the alert fired
+again), it adds the new alert to that case and stops. Otherwise:
 
 1. **investigate** - runs the `banking-triage` Agent Builder agent on the
    alert. The agent follows the same path as scenario 2 (alerts, service
@@ -250,17 +254,19 @@ call that produced it.
 ### Before you begin
 
 - The bad release from the reset must still be running.
-- The cases appear 2-4 minutes after the reset: the error-rate alerts fire
-  within a minute of the bad release starting, and the agent then takes
-  about 2 minutes per alert. They are ready by the time scenario 1 ends.
-- `scripts/reset-demo.sh --full` closes the cases from the previous run. A
-  plain reset leaves them open, so the list may show earlier cases too.
+- The cases appear 3-4 minutes after the reset: the error-rate alerts fire
+  about 2 minutes after it (rollout plus the 1 minute rule window), and the
+  agent then takes about 2 minutes per alert. They are ready by the time scenario 1 ends.
+- Run `scripts/reset-demo.sh --full` before this scenario. It deletes the
+  cases, workflow runs and conversations from earlier runs. After a plain
+  reset the earlier cases are still open, so new alerts are added to them and
+  no new investigation runs.
 
 ### Steps
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | As `demo-sre`, open **Workflows** > **Banking alert triage** > **Executions** and open the latest run. | One run per alerting service (`transfer-service` and `web-banking`), each with its trigger (the alert), its three steps, their inputs and outputs, and their duration. |
+| 1 | As `demo-sre`, open **Workflows** > **Banking alert triage** > **Executions** and open the latest run. | One run per alerting service (`transfer-service` and `web-banking`), each with its trigger (the alert), its steps, their inputs and outputs, and their duration. A later run for the same service adds its alert to the existing case and skips the investigation. |
 | 2 | Observability > **Cases**: open the `AI triage: transfer-service - ...` case. | The agent's summary, root cause and confidence, the evidence list, next steps and an ES\|QL query, with the alert attached. The result was produced by the workflow; nobody asked for it. |
 | 3 | Follow the **Agent conversation** link in the case. The error-rate rule is owned by `demo-sre`, so the workflow, and the conversation, run as that user. | The agent's conversation in Agent Builder: every tool call (alerts, topology, correlations, traces, logs, ES\|QL) with its input and result, so each finding can be checked against the data. |
 | 4 | Copy the case's ES\|QL query and run it in Discover. | A query that can be verified and kept, for example the error rate by `service.version`. |
@@ -272,8 +278,9 @@ call that produced it.
   failing because it calls `transfer-service`, not as the cause.
 - The **AI Assistant** button on the alert ("Help me understand this alert")
   gives the same kind of analysis on demand, without the workflow.
-- The workflow, the agent and the rule action are all Terraform resources
-  (`terraform/modules/kibana-content/triage.tf`), reviewed and deployed like
+- The workflow and the agent (`terraform/modules/kibana-content/triage.tf`)
+  and the action on the error-rate rule (`rules.tf`) are all Terraform
+  resources, reviewed and deployed like
   the rest of the configuration (scenario 5).
 
 ### What this shows
@@ -317,7 +324,7 @@ traces are available.
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | Switch to the `demo-viewer` browser profile. Open the same alert, service map, correlations, trace waterfall and logs, then the AI triage case from scenario 3a and its **Agent conversation** link. | Everything used in scenario 2 works. There is no AI Assistant button, and Agent Builder is not in the navigation. The case can be read, but the conversation does not open: it belongs to `demo-sre`. |
+| 1 | Switch to the `demo-viewer` browser profile. Open the same alert, service map, correlations, trace timeline and logs, then the AI triage case from scenario 3a and its **Agent conversation** link. | Everything used in scenario 2 works. There is no AI Assistant button, and Agent Builder is not in the navigation. The case can be read, but the conversation does not open: it belongs to `demo-sre`. |
 | 2 | In the `elastic` profile: Stack Management > Roles > `demo-viewer`, then `demo-sre`. | `demo-viewer` has Observability read and no AI Assistant or Agent Builder privileges; `demo-sre` has both. AI access is an ordinary role privilege. |
 | 3 | Open `terraform/modules/kibana-content/security.tf`. | Both roles are defined in Terraform, so a change to AI access goes through code review. |
 
@@ -364,10 +371,10 @@ rule interval). A measured run: 282 s.
 
 | Step | Action | What you see |
 |---|---|---|
-| 1 | Observability > SLOs: the transaction availability SLO, grouped by `service.name`. | The `transfer-service` instance is using its error budget fastest: the same release from scenario 2. `web-banking`, which passes the failed transfers on to the browser, uses budget more slowly, because most of its requests are balance checks. The objective is in customer terms: 99% of transactions succeed over a rolling 7 days. |
+| 1 | Observability > SLOs: **Banking transaction availability**, grouped by `service.name`. | The `transfer-service` instance is using its error budget fastest: the same release from scenario 2. `web-banking`, which passes the failed transfers on to the browser, uses budget more slowly, because most of its requests are balance checks. The objective is in customer terms: 99% of transactions succeed over a rolling 7 days. |
 | 2 | Open the latency SLO for `transfer-service`. | Still healthy: the release made transfers ~0.4 s slower, but within the 500 ms objective. The SLOs show which promise is being broken. |
 | 3 | Open the availability SLO's `transfer-service` instance, then its linked burn-rate rule. | The SLI chart, the error budget burn-down, and a rule with several windows (fast and slow burn): it alerts when the budget is being used fast enough to run out, not when a single request fails. |
-| 4 | Alerts: open the availability burn-rate alert for `transfer-service`. | Severity **High**: the 60 min and 1 min burn rates (around 6 and 20) are both above the threshold of 6. This is the alert that would page the on-call engineer. It first appears as Low a minute earlier: right after the SLO reset, the 24 h window holds only a few minutes of data. |
+| 4 | Alerts: open the availability burn-rate alert for `transfer-service`. | The severity rises as the windows fill: Medium or High first, then **Critical** about 8 minutes after the reset, when the 5 min and 1 min burn rates (around 20) are both above 14.4, the fast-burn threshold. High and Critical are the severities that page the on-call engineer. The lower severities come first because, right after the SLO reset, the longer windows hold only a few minutes of data. |
 | 5 | If `alert_email_recipients` is set: open the email notification, then Stack Management > Connectors > email connector > execution log. | A successful delivery through the Elastic Cloud email service. The same rule can call PagerDuty, ServiceNow or a webhook. With no recipients, the rules have no email action. |
 | 6 | Open `results/detection-delay-<timestamp>.json` (or the script's output). | `detection_delay_seconds`: the measured time from turning on the release to the paging alert in this run. |
 
@@ -421,18 +428,21 @@ without errors).
 | Step | Action | What you see |
 |---|---|---|
 | 1 | Open `dashboards/` in the repo, and the Terraform resource that deploys it through the Kibana Dashboards API on `terraform apply`. | The dashboard as JSON, reviewed in a pull request like any other change. It is redeployed when the file changes. |
-| 2 | Kibana > Dashboards: open the banking dashboard. | The same dashboard, deployed from Git. |
+| 2 | Kibana > Dashboards: open **Banking service overview**. | The same dashboard, deployed from Git. |
 | 3 | Edit a file in `dashboards/` (for example change a panel title), then `git diff`, `git commit`, `terraform apply` (~30 s; only the dashboard resource changes). Refresh Kibana. | The change is live after commit and apply. The same flow works in every environment. |
 | 4 | In Kibana, create or edit a dashboard by hand (add a panel) and save it. | Dashboards can still be built in the UI. |
 | 5 | `scripts/export-dashboard.sh "<dashboard title>"`, then `git diff --stat`. | `dashboards/<slug>.json`, normalised (server metadata stripped, keys sorted) so the diff is clean and ready for review. |
 
-Revert the edit afterwards (`git checkout -- dashboards/` and
-`terraform apply`) if you do not want to keep it.
+To undo the scenario afterwards: `git revert HEAD` (the step 3 commit),
+delete the file exported in step 5, delete the hand-made dashboard in
+Kibana, and run `terraform apply`.
 
 ### Explore further
 
-SLOs, burn-rate and threshold rules, the email connector, the ML job, roles
-and users are Terraform resources too (`elasticstack` provider).
+SLOs, burn-rate and threshold rules and their email actions, the ML job,
+roles and users, and the AI triage agent and workflow are Terraform
+resources too (`elasticstack` provider). The email connector is the Elastic
+Cloud preconfigured one.
 
 ### What this shows
 
@@ -454,14 +464,10 @@ of incident. Turn the bad release off first (control panel > Bad release
 
 | Fault | Command | Visible after |
 |---|---|---|
-| Bad release of transfer-service (scenario 2) | `scripts/fault-inject.sh bad-version on` | new version ~1-2 min, correlations ~3-5 min |
+| Bad release of transfer-service (scenario 2) | `scripts/fault-inject.sh bad-version on` | new version ~1-2 min, correlations ~5 min |
 | [Slow database in accounts-ledger](#slow-database-in-accounts-ledger) | `scripts/fault-inject.sh slow-db on` | slow DB spans and WARN logs ~1 min |
 | [Latency on transfer-service](#latency-on-transfer-service) | `scripts/fault-inject.sh latency on 1500` | alert ~1-2 min |
 | [Errors in fraud-check](#errors-in-fraud-check) | `scripts/fault-inject.sh errors on 30` | error rate ~1 min, alert ~1-2 min |
-
-To open the trace of your own transfer: APM > service `web-banking-frontend` >
-transaction `Submit transfer` > latest sample. The browser span is the root,
-above `web-banking`.
 
 ### Slow database in accounts-ledger
 
@@ -476,7 +482,7 @@ longer and transfers ~1.6 s longer. Nothing fails.
 | 1 | In the bank UI, refresh the balance and send a transfer. | Both succeed, but are noticeably slow. |
 | 2 | Observability > Alerts. | Latency alerts for `accounts-ledger`, and for `transfer-service` and `web-banking`, which wait on it: three services alerting, one cause. |
 | 3 | Service map: click `accounts-ledger` > Service details. | Alert badges along the chain; `accounts-ledger` is the deepest unhealthy service, next to its Postgres dependency. |
-| 4 | Pick a slow sample > **Trace waterfall** (or your transfer from step 1). Expand the `accounts-ledger` span and its Postgres child span. | The statement contains `pg_sleep`: the query where the time goes, in a trace that crosses Node.js, Java, .NET and Python. |
+| 4 | Trace samples: pick a slow sample (or your transfer from step 1) and open the **Timeline** tab. Expand the `accounts-ledger` span and its Postgres child span. | The statement contains `pg_sleep`: the query where the time goes, in a trace that crosses Node.js, Java, .NET and Python. |
 | 5 | Open the **Logs** tab. | `WARN Slow ledger query: ... took N ms (threshold 500 ms)` from accounts-ledger, alongside the lines from every other service in the trace (web-banking `transfer processed`, fraud-check `Scored transfer ...`, accounts-ledger `Posted debit ...`). |
 | 6 | Discover > ES\|QL: the second and fourth [ES\|QL queries](#esql-queries). | All logs for the trace, and flat pod CPU: the database is waiting, not short of resources, so more nodes would not help. |
 
@@ -495,7 +501,7 @@ work. Balance checks do not go through transfer-service and are unaffected.
 | 1 | In the bank UI, send a transfer, then refresh the balance. | The transfer takes 1.5 s or more; the balance is fast. The problem is on the transfer path. |
 | 2 | Observability > Alerts. | Latency alerts for `transfer-service`, and for `web-banking`, which waits on it. |
 | 3 | Service map. | An alert badge on `transfer-service`; its dependencies `fraud-check` and `accounts-ledger` are healthy, so the time is spent inside transfer-service. |
-| 4 | Pick a slow sample > **Trace waterfall**. | The `POST /transfer` span is ~1.5 s long, but its calls to fraud-check and accounts-ledger take their normal time; the gap before the first child call is the delay. |
+| 4 | Trace samples: pick a slow sample and open the **Timeline** tab. | The `POST /transfer` span is ~1.5 s long, but its calls to fraud-check and accounts-ledger take their normal time; the gap before the first child call is the delay. |
 | 5 | Discover > ES\|QL: `FROM logs-*.otel-* \| WHERE service.name == "transfer-service" AND body.text LIKE "Fault config changed*"` | The `Fault config changed: LATENCY_MS=1500` line marks when the regression started. In a real incident, this is the config change or deployment to look for. |
 
 What this shows: healthy dependencies narrow the search to one service, and a
@@ -514,7 +520,7 @@ on: `scripts/fault-inject.sh errors on 30` (control panel > Errors **On**).
 | 2 | Observability > Alerts. | Error-rate alerts for `fraud-check`, `transfer-service` and `web-banking`. |
 | 3 | Service map: click `fraud-check` > Service details. | `fraud-check` is the deepest service with an alert badge: the errors start there and travel up the call chain. |
 | 4 | fraud-check > **Errors**. | The `FraudModelTimeoutException` group, with its stack trace, occurrences over time, and first and last seen. |
-| 5 | Open a failed sample > **Trace waterfall** (or your failed transfer from step 1). | The error on the fraud-check span becomes an HTTP 500 in transfer-service, web-banking and the browser. |
+| 5 | Trace samples: open a failed sample (or your failed transfer from step 1) and its **Timeline** tab. | The error on the fraud-check span becomes an HTTP 500 in transfer-service, web-banking and the browser. |
 | 6 | Open the **Logs** tab. | `Unhandled exception processing /score` from fraud-check, and the failure as it surfaced in web-banking (`transfer failed`). |
 | 7 | Discover > ES\|QL: the third [ES\|QL query](#esql-queries). | Errors by service and version. |
 
@@ -603,14 +609,19 @@ Before a fresh run:
 
 ```bash
 scripts/reset-demo.sh --full   # also resets both SLOs, redeploys dashboards from Git,
-                               # waits (up to 6 min) for alerts to recover, untracks any
-                               # alert still active, then turns the bad release on
+                               # waits (up to 6 min) for alerts to recover, deletes the
+                               # alert history, cases, AI triage workflow runs and
+                               # conversations, then turns the bad release on
 ```
 
-Untracked alerts leave the Alerts page at once (they stay in alert history).
-`--no-wait` untracks straight away; right after a fault an alert can then
+The deletes cannot be undone. Alerts and workflow runs have no delete API, so
+they are removed from Kibana's internal indices (the workflow runs by the
+`demo-reset` user, which only has access to those indices). Traces, logs and
+metrics are kept: set the time picker to Last 15 minutes.
+
+`--no-wait` skips the wait for recovery; right after a fault an alert can then
 fire once more and recover within ~5-6 min. `--wait-timeout MIN` changes the
-wait. Alert history, ML anomaly results and historical telemetry are kept.
+wait. ML anomaly results and historical telemetry are kept.
 
 When finished:
 

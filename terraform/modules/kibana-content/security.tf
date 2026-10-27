@@ -200,3 +200,33 @@ resource "elasticstack_elasticsearch_security_user" "demo_viewer" {
   password  = random_password.demo_viewer.result
   roles     = [elasticstack_kibana_security_role.demo_viewer.name]
 }
+
+# demo-reset: used only by scripts/reset-demo.sh --full to delete the AI triage workflow's run history.
+# The Workflows API has no delete endpoint for executions, and .workflows-executions /
+# .workflows-step-executions are restricted indices that even the superuser cannot write to unless a role
+# grants allow_restricted_indices. Scoped to those two indices; no Kibana access.
+resource "elasticstack_elasticsearch_security_role" "demo_reset" {
+  name = "demo-reset"
+
+  indices {
+    names                    = [".workflows-executions", ".workflows-step-executions"]
+    privileges               = ["read", "delete"]
+    allow_restricted_indices = true
+  }
+}
+
+resource "random_password" "demo_reset" {
+  length           = 24
+  special          = true
+  override_special = "-_.!"
+  min_upper        = 2
+  min_lower        = 2
+  min_numeric      = 2
+}
+
+resource "elasticstack_elasticsearch_security_user" "demo_reset" {
+  username  = "demo-reset"
+  full_name = "Banking demo reset (workflow history cleanup)"
+  password  = random_password.demo_reset.result
+  roles     = [elasticstack_elasticsearch_security_role.demo_reset.name]
+}

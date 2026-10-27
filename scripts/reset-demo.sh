@@ -20,13 +20,14 @@
 #   untracks any alert still active, so the next run starts from a clean
 #   Alerts page. --no-wait untracks at once; an alert whose rule window still
 #   holds fault data may then fire again within ~1 min and recover shortly after.
-# - closes the open AI triage cases (tag ai-triage) created by the triage workflow,
-#   so the next bad release opens a fresh one
+# - deletes the history of earlier runs, so the next run starts from a clean slate:
+#   the demo rules' alerts, every Observability case (including the AI triage cases),
+#   the AI triage workflow's runs and demo-sre's conversations with the triage agent
 # The bad release is turned on after these steps, so its SLO burn-rate alert is a
 # new alert against a full error budget (scripts/detection-delay.sh measures it).
 #
-# Traces, logs, metrics, alert history and ML anomaly results are never deleted
-# (resetting the ML job would also throw away its learned baseline).
+# Traces, logs, metrics and ML anomaly results are never deleted (resetting the ML
+# job would also throw away its learned baseline).
 set -euo pipefail
 
 # shellcheck source=lib.sh source-path=SCRIPTDIR
@@ -138,19 +139,94 @@ wait_for_alert_recovery() {
   done
 }
 
-# Close the open cases the AI triage workflow opened (terraform/modules/kibana-content/triage.tf).
-close_triage_cases() {
-  local found body count
-  found="$(kb_api GET "/api/cases/_find?owner=observability&tags=ai-triage&status=open&status=in-progress&perPage=100")" ||
-    return 1
-  count="$(jq -r '.cases | length' <<<"${found}")"
-  if [[ "${count}" == "0" ]]; then
-    info "  No open AI triage cases"
+# --- History clean-up (--full): a clean slate for the next run -------------------------------
+# Same approach as the other demo repos: there is no supported API to delete alert history or
+# workflow executions, so those are removed with _delete_by_query. Cases and conversations use
+# their Kibana APIs.
+
+# Alert documents of the demo rules (tag banking-demo). Runs after untrack_demo_alerts, which
+# disables and re-enables every rule, so no rule state still refers to a deleted alert.
+delete_demo_alerts() {
+  local query resp
+  query='{"query":{"term":{"kibana.alert.rule.tags":"banking-demo"}}}'
+  resp="$(es_api POST "/.alerts-observability.*/_delete_by_query?expand_wildcards=open,hidden&refresh=true&conflicts=proceed" \
+    "${query}")" || return 1
+  info "  Deleted $(jq -r '.deleted // 0' <<<"${resp}") alert(s)"
+}
+
+# Every Observability case (the AI triage cases and any opened during a run), 100 per request.
+delete_cases() {
+  local found ids count total=0 pages=0
+  while ((pages < 20)); do
+    pages=$((pages + 1))
+    found="$(kb_api GET "/api/cases/_find?owner=observability&perPage=100")" || return 1
+    count="$(jq -r '.cases | length' <<<"${found}")"
+    ((count > 0)) || break
+    ids="$(jq -c '[.cases[].id]' <<<"${found}")"
+    kb_api DELETE "/api/cases?ids=$(uri_encode "${ids}")" >/dev/null || return 1
+    total=$((total + count))
+  done
+  info "  Deleted ${total} case(s)"
+}
+
+# Finished runs of the triage workflow and their step records. .workflows-executions and
+# .workflows-step-executions are restricted indices: only the demo-reset user (security.tf) can
+# delete from them. In-flight runs are left alone.
+delete_workflow_runs() {
+  local workflow_id password ids count index
+  workflow_id="$(tf_out_opt triage_workflow_id)"
+  password="$(tf_out_opt demo_reset_password)"
+  if [[ -z "${workflow_id}" || -z "${password}" ]]; then
+    warn "  Terraform outputs triage_workflow_id / demo_reset_password missing; skipping (run terraform apply)"
     return 0
   fi
-  body="$(jq -c '{cases: [.cases[] | {id, version, status: "closed"}]}' <<<"${found}")"
-  kb_api PATCH "/api/cases" "${body}" >/dev/null || return 1
-  info "  Closed ${count} AI triage case(s)"
+  ids="$(_curl_auth demo-reset "${password}" -X POST -H "Content-Type: application/json" --fail-with-body \
+    "${ES_URL}/.workflows-executions/_search" \
+    --data-binary "$(jq -nc --arg w "${workflow_id}" '{size: 1000, _source: ["id"], query: {bool: {
+      filter: [{term: {workflowId: $w}}],
+      must_not: [{terms: {status: ["running", "pending", "waiting"]}}]}}}')" |
+    jq -c '[.hits.hits[]._source.id]')" || return 1
+  count="$(jq -r 'length' <<<"${ids}")"
+  if ((count == 0)); then
+    info "  No workflow runs to delete"
+    return 0
+  fi
+  # No ?refresh=true: refreshing needs the maintenance privilege, which demo-reset does not have.
+  # The indices refresh on their own within about a second.
+  for index in .workflows-step-executions .workflows-executions; do
+    _curl_auth demo-reset "${password}" -X POST -H "Content-Type: application/json" --fail-with-body \
+      "${ES_URL}/${index}/_delete_by_query?conflicts=proceed" \
+      --data-binary "$(jq -nc --argjson ids "${ids}" --arg i "${index}" \
+        'if $i == ".workflows-executions" then {query: {terms: {id: $ids}}}
+         else {query: {terms: {workflowRunId: $ids}}} end')" >/dev/null || return 1
+  done
+  info "  Deleted ${count} workflow run(s)"
+}
+
+# demo-sre's conversations with the triage agent (one per workflow run, plus follow-ups).
+delete_triage_conversations() {
+  local password ids id count=0
+  password="$(tf_out_opt demo_sre_password)"
+  [[ -n "${password}" ]] || return 0
+  ids="$(_curl_auth demo-sre "${password}" -H "x-elastic-internal-origin: Kibana" --fail-with-body \
+    "${KB_URL}/api/agent_builder/conversations" |
+    jq -r '.results[] | select(.agent_id == "banking-triage") | .id')" || return 1
+  for id in ${ids}; do
+    _curl_auth demo-sre "${password}" -X DELETE -H "kbn-xsrf: true" -H "x-elastic-internal-origin: Kibana" \
+      --fail-with-body "${KB_URL}/api/agent_builder/conversations/$(uri_encode "${id}")" >/dev/null || return 1
+    count=$((count + 1))
+  done
+  info "  Deleted ${count} triage conversation(s)"
+}
+
+clear_history() {
+  local failed=0
+  untrack_demo_alerts >/dev/null || failed=1
+  delete_demo_alerts || { error "  Deleting alerts failed"; failed=1; }
+  delete_cases || { error "  Deleting cases failed"; failed=1; }
+  delete_workflow_runs || { error "  Deleting workflow runs failed"; failed=1; }
+  delete_triage_conversations || { error "  Deleting triage conversations failed"; failed=1; }
+  return "${failed}"
 }
 
 ensure_kube
@@ -210,8 +286,8 @@ else
   untrack_demo_alerts || status=1
 fi
 
-info "7/${TOTAL} Closing AI triage cases"
-close_triage_cases || { error "  Closing AI triage cases failed"; status=1; }
+info "7/${TOTAL} Deleting alert history, cases, AI triage workflow runs and conversations"
+clear_history || status=1
 
 start_bad_release || status=1
 
@@ -226,7 +302,7 @@ else
   warn "Full reset finished with warnings (see above). Re-run or check Kibana before presenting."
 fi
 cat <<'EOF'
-Not reset: alert history, ML anomaly results (the job keeps its baseline) and
-historical telemetry. They do not affect the next run.
+Not reset: ML anomaly results (the job keeps its baseline) and historical
+telemetry. Set the Kibana time picker to 'Last 15 minutes'.
 EOF
 exit "${status}"

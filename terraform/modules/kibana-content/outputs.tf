@@ -54,3 +54,9 @@ output "triage_workflow_id" {
   description = "Id of the AI triage workflow run by the error-rate rule."
   value       = elasticstack_kibana_agentbuilder_workflow.triage.workflow_id
 }
+
+output "demo_reset_password" {
+  description = "Password of the demo-reset user (deletes workflow run history in reset-demo.sh --full)."
+  value       = random_password.demo_reset.result
+  sensitive   = true
+}
