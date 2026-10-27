@@ -15,7 +15,12 @@
 
 locals {
   observability_data_indices = ["logs-*", "metrics-*", "traces-*"]
-  observability_system_read  = [".slo-observability.*", ".alerts-observability.*", ".ml-anomalies-*"]
+  observability_system_read = [
+    ".slo-observability.*", ".alerts-observability.*", ".ml-anomalies-*",
+    # The Alerts page queries every alerts index the user's Kibana features expose (ml and stackAlerts
+    # add these); without read on all of them its filter controls (Status, Rule, Group, Tags) fail.
+    ".alerts-stack.*", ".alerts-ml.*", ".alerts-transform.*", ".alerts-default.*",
+  ]
 }
 
 resource "elasticstack_kibana_security_role" "demo_sre" {

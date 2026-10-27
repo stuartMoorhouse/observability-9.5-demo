@@ -59,6 +59,11 @@ output "web_banking_url" {
   value       = module.demo_app.web_banking_url
 }
 
+output "control_panel_ip_set" {
+  description = "WAF IP set (name, id) behind control_panel_url and web_banking_url; scripts check it covers the caller's IP"
+  value       = module.demo_app.control_panel_ip_set
+}
+
 output "demo_sre_password" {
   description = "Password for the demo-sre Kibana user"
   value       = module.kibana_content.demo_sre_password

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Reset the demo and leave it ready for every scenario in docs/runbook.md.
 #
-#   scripts/reset-demo.sh [--rate N] [--keep-fx-rates] [--no-fault] [--full [--no-wait] [--wait-timeout MIN]]
+#   scripts/reset-demo.sh [--rate N] [--keep-fx-rates] [--no-fault] [--skip-ip-check] [--full [--no-wait] [--wait-timeout MIN]]
 #
 # Always:
+# - checks this machine's public IP is in the EKS API and control panel / bank UI
+#   allowlists, and re-applies them with Terraform if not (e.g. after changing network).
+#   --skip-ip-check skips this.
 # - turns every fault off (latency, errors, slow-db)
 # - restores transfer-service APP_VERSION=1.4.2 BAD_RELEASE=false
 # - uninstalls fx-rates (unless --keep-fx-rates) so scenario 1 can be re-run
@@ -42,6 +45,7 @@ NO_FAULT=false
 FULL=false
 WAIT_ALERTS=true
 WAIT_TIMEOUT_MIN=6
+IP_CHECK=true
 
 usage() {
   print_header "${BASH_SOURCE[0]}"
@@ -53,6 +57,7 @@ while (($# > 0)); do
     --rate) RATE="${2:?--rate needs a value}"; shift 2 ;;
     --keep-fx-rates) KEEP_FX=true; shift ;;
     --no-fault) NO_FAULT=true; shift ;;
+    --skip-ip-check) IP_CHECK=false; shift ;;
     --full) FULL=true; shift ;;
     --no-wait) WAIT_ALERTS=false; shift ;;
     --wait-timeout) WAIT_TIMEOUT_MIN="${2:?--wait-timeout needs a value}"; shift 2 ;;
@@ -229,6 +234,7 @@ clear_history() {
   return "${failed}"
 }
 
+[[ "${IP_CHECK}" == "true" ]] && ensure_ip_allowlisted
 ensure_kube
 if [[ "${FULL}" == "true" ]]; then
   require_cmd jq curl

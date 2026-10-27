@@ -638,13 +638,13 @@ that date. See README.md, Teardown.
 | Symptom | Check |
 |---|---|
 | Scripts fail with "unreachable" | VPN/network, deployment running in the Elastic Cloud console, `terraform output kibana_url` |
-| kubectl / terraform times out reaching the EKS API | The API only allows the IP you applied from. If your IP changed (new network, VPN), run `terraform apply` again, or set `eks_api_allowed_cidrs` in `terraform/local.auto.tfvars` |
+| kubectl / terraform times out reaching the EKS API | The API only allows the IP you applied from. If your IP changed (new network, VPN), run `scripts/reset-demo.sh` (it re-applies the allowlists for the new IP), or set `eks_api_allowed_cidrs` in `terraform/local.auto.tfvars` |
 | kubectl cannot reach `banking` | `aws eks update-kubeconfig --name $(terraform output -raw cluster_name) --region $(terraform output -raw aws_region) --profile $(terraform output -raw aws_profile)` |
 | No traces for a service | Pod has an `opentelemetry-auto-instrumentation-*` init container; `kubectl -n opentelemetry-operator-system get pods`; load generator running |
 | A service is missing its init container after nodes were replaced | The pod started before the OTel Operator was ready. `kubectl -n banking rollout restart deployment/<service>`, then `scripts/validate.sh --only 3` |
 | Trace sample Logs tab is empty, or a service is missing from it | `scripts/validate.sh --only 5` (shows `log->trace=no` per service). Check the service's log export setting in [How log correlation works](#how-log-correlation-works); the time picker must cover the trace |
 | Bank UI spans missing (`web-banking-frontend` not in APM) | Browser dev tools > Network: `POST /v1/traces` should return 200. 403 means the request bypassed CloudFront; 503 means the web-banking pod has no `OTEL_EXPORTER_OTLP_ENDPOINT` (not auto-instrumented). `scripts/test-runbook.sh` check R7 posts a test span through the same path |
-| Bank UI returns 403 from CloudFront | Your IP is not in `control_panel_allowed_cidrs` (the WAF ACL is shared with the control panel) |
+| Bank UI returns 403 from CloudFront | Your IP is not in `control_panel_allowed_cidrs` (the WAF ACL is shared with the control panel). Run `scripts/reset-demo.sh`, which re-applies it for your current IP; the change reaches CloudFront within a minute or two |
 | No new burn-rate alert | A previous alert is still active; wait for recovery or reset the SLO |
 | AI Assistant not responding | Managed LLM connector in Stack Management > Connectors; user is `demo-sre` |
 | No AI triage case after ~5 min | Workflows > Banking alert triage > Executions: a failed step shows its error. No execution at all: the error-rate alert started before the workflow existed or is still active from an earlier run (only new alerts trigger it); run `scripts/reset-demo.sh --full` |

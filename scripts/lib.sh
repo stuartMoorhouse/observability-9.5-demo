@@ -290,6 +290,76 @@ check_elastic() {
 }
 
 # ---------------------------------------------------------------------------
+# Network allowlists (EKS API endpoint, WAF in front of the CloudFront UIs)
+# ---------------------------------------------------------------------------
+_ipv4_to_int() {
+  local a b c d
+  IFS=. read -r a b c d <<<"$1"
+  printf '%s' $(((a << 24) | (b << 16) | (c << 8) | d))
+}
+
+# ip_in_cidrs IP CIDR...  -> 0 if any IPv4 CIDR contains IP
+ip_in_cidrs() {
+  local ip cidr net bits mask
+  ip="$(_ipv4_to_int "$1")"
+  shift
+  for cidr in "$@"; do
+    [[ "${cidr}" =~ ^([0-9.]+)/([0-9]+)$ ]] || continue
+    net="$(_ipv4_to_int "${BASH_REMATCH[1]}")"
+    bits="${BASH_REMATCH[2]}"
+    mask=$(((0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF))
+    (((ip & mask) == (net & mask))) && return 0
+  done
+  return 1
+}
+
+# _allowlist_gaps IP  -> names of the allowlists (from live AWS state) that do not cover IP
+_allowlist_gaps() {
+  local ip="$1" profile region cluster ip_set cidrs gaps=()
+  profile="$(tf_out aws_profile)"
+  region="$(tf_out aws_region)"
+  cluster="$(tf_out cluster_name)"
+  ip_set="$(tf_out control_panel_ip_set)"
+  # shellcheck disable=SC2207  # CIDRs contain no whitespace or globs
+  cidrs=($(aws eks describe-cluster --profile "${profile}" --region "${region}" --name "${cluster}" \
+    --query 'cluster.resourcesVpcConfig.publicAccessCidrs' --output text)) ||
+    die "Could not read the EKS endpoint allowlist (check AWS credentials for profile ${profile})."
+  ip_in_cidrs "${ip}" "${cidrs[@]}" || gaps+=("eks_api_allowed_cidrs")
+  # shellcheck disable=SC2207
+  cidrs=($(aws wafv2 get-ip-set --profile "${profile}" --region us-east-1 --scope CLOUDFRONT \
+    --name "$(jq -r .name <<<"${ip_set}")" --id "$(jq -r .id <<<"${ip_set}")" \
+    --query 'IPSet.Addresses' --output text)) ||
+    die "Could not read the WAF IP set (check AWS credentials for profile ${profile})."
+  ip_in_cidrs "${ip}" "${cidrs[@]}" || gaps+=("control_panel_allowed_cidrs")
+  printf '%s\n' "${gaps[@]}"
+}
+
+# ensure_ip_allowlisted  -> makes sure this machine's public IP can reach the EKS API and the
+# CloudFront UIs. With the allowlist variables left empty, Terraform allows the IP it runs from,
+# so a changed IP (new network, VPN) is fixed by re-applying. The EKS endpoint goes first: until
+# it admits this IP, Terraform cannot refresh the Kubernetes resources the WAF IP set depends on.
+ensure_ip_allowlisted() {
+  require_cmd aws curl jq terraform
+  local ip gaps
+  ip="$(curl -sS --connect-timeout "${CURL_CONNECT_TIMEOUT}" --max-time 20 https://checkip.amazonaws.com | tr -d '[:space:]')"
+  [[ "${ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Could not determine this machine's public IPv4 address."
+  gaps="$(_allowlist_gaps "${ip}")"
+  if [[ -z "${gaps}" ]]; then
+    info "Public IP ${ip} is allowlisted (EKS API, control panel / bank UI)"
+    return 0
+  fi
+  warn "Public IP ${ip} is not in: $(tr '\n' ' ' <<<"${gaps}")- re-applying the allowlists with Terraform"
+  terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -target=module.eks.module.eks.aws_eks_cluster.this >&2 ||
+    die "terraform apply (EKS endpoint allowlist) failed."
+  terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -target=module.demo_app.aws_wafv2_ip_set.control_panel >&2 ||
+    die "terraform apply (WAF IP set) failed."
+  gaps="$(_allowlist_gaps "${ip}")"
+  [[ -z "${gaps}" ]] ||
+    die "Public IP ${ip} is still not in: $(tr '\n' ' ' <<<"${gaps}")- these are set explicitly in terraform/local.auto.tfvars; add ${ip}/32 or empty them."
+  info "Public IP ${ip} allowlisted. The WAF change can take a minute or two to reach CloudFront."
+}
+
+# ---------------------------------------------------------------------------
 # Kubernetes helpers
 # ---------------------------------------------------------------------------
 kctl() {

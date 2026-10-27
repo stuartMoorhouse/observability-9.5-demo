@@ -28,3 +28,8 @@ output "web_banking_url" {
   description = "web-banking browser UI HTTPS URL (CloudFront default certificate)"
   value       = "https://${aws_cloudfront_distribution.web_banking.domain_name}"
 }
+
+output "control_panel_ip_set" {
+  description = "Name and ID of the WAF IP set (CLOUDFRONT scope, us-east-1) behind the control panel and bank UI"
+  value       = { name = aws_wafv2_ip_set.control_panel.name, id = aws_wafv2_ip_set.control_panel.id }
+}

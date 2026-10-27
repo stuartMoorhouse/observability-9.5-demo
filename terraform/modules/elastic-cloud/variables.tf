@@ -56,5 +56,5 @@ variable "ml_size" {
 variable "kibana_size" {
   description = "Kibana memory per zone"
   type        = string
-  default     = "1g"
+  default     = "2g"
 }

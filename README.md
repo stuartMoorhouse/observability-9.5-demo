@@ -128,7 +128,8 @@ k6 is not needed locally: the load generator runs in the cluster.
 
 Network access: the public EKS API endpoint only accepts the public IP of the
 machine running `terraform apply` (detected automatically). If you present from
-a different network, re-run `terraform apply` there first, or list CIDRs in
+a different network, `scripts/reset-demo.sh` detects the new IP and re-applies the
+EKS and WAF allowlists before resetting; alternatively list CIDRs in
 `eks_api_allowed_cidrs`.
 
 ## Demo control panel
@@ -152,8 +153,8 @@ terraform -chdir=terraform output -raw control_panel_url
 - **Access:** HTTPS through a CloudFront distribution (`https://<id>.cloudfront.net`,
   CloudFront's default certificate). AWS WAF on the distribution only admits
   `control_panel_allowed_cidrs` (IPv4), which defaults to the public IP of the machine
-  running `terraform apply`. If you present from another network, re-apply there or set
-  the CIDRs. A first deploy takes about 5-15 minutes to propagate.
+  running `terraform apply`. If you present from another network, `scripts/reset-demo.sh`
+  re-applies the allowlist for your new IP, or set the CIDRs. A first deploy takes about 5-15 minutes to propagate.
   There is no login, so the IP restriction is the only access control.
 - **Origin:** CloudFront forwards to a Classic Load Balancer on HTTP port 80. The load
   balancer is open to the internet because CloudFront connects from its own IP ranges;
