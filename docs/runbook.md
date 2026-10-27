@@ -195,10 +195,11 @@ browser span is the root, above `web-banking`.
 
 - Log to trace: click a log line > open its details > **trace.id** / "View
   trace".
-- The same view in Discover: ES|QL `FROM traces-*`, filter to
-  `service.name == "transfer-service" AND status.code == "Error"`, expand a
-  row. The **Overview** tab shows the trace summary and a **Logs** section;
-  **Open in Discover** opens them as a log list (technical preview).
+- The same correlation in Discover, step by step with ES|QL:
+  [Trace-log correlation in Discover](#trace-log-correlation-in-discover).
+  Without queries: in Discover, expand a `traces-*` row; the **Overview** tab
+  shows the trace summary and a **Logs** section, and **Open in Discover**
+  opens them as a log list (technical preview).
 - Ad-hoc analysis: the first and third [ES|QL queries](#esql-queries)
   (failures and p95 by `service.version`, errors by version).
 - Other failure types: [Appendix: other faults](#appendix-other-faults-for-scenario-2).
@@ -564,6 +565,76 @@ FROM metrics-*.otel-*
 
 Field names follow the OTel-native mappings in 9.5 (`duration` is in
 nanoseconds). Adjust if a field is named differently on your stack.
+
+### Trace-log correlation in Discover
+
+The same correlation as the trace sample **Logs** tab (scenario 2, step 7),
+done in Discover with ES|QL so every step is a query that can be shown, kept
+or shared. Needs the bad release on (the state after a reset). Discover >
+ES|QL mode, time picker **Last 15 minutes**. Replace `<trace.id>` with the
+value copied in step 1 or 4 (hover the cell > **Copy value**).
+
+| Step | Action | What you see |
+|---|---|---|
+| 1 | Run query A (failed transfers). Copy a `trace.id`. | `POST /transfer` requests answered with HTTP 500, all on `service.version` `2.0.0`. |
+| 2 | Run query B (logs of that trace). | Three log lines from two services for the one request: `ERROR Ledger contract mismatch ...` from transfer-service, then `transfer failed` and `request errored` from web-banking. Each has the `span.id` of the span that was active when it was written. |
+| 3 | Run query C (spans and logs of that trace, one timeline). | The spans (`POST /api/transfers` in web-banking, `POST /transfer` in transfer-service, both `Error`) followed by the log lines. The ~0.4 s between the start of `POST /transfer` and its `ERROR` log is the delay the bad release adds. If only log lines appear, the spans are still being indexed: run it again after a few seconds. |
+| 4 | Log to trace: run query D (the error message), copy a `trace.id` and run query C with it. | Starting from a log line instead of a trace leads to the same request. |
+| 5 | Run query E (error logs by version). | transfer-service `2.0.0` writes one error log per failed trace; web-banking writes two per trace for about the same number of traces. The web-banking errors are the same failed transfers seen from upstream, not a second problem. |
+
+Query A, failed transfers:
+
+```esql
+FROM traces-*.otel-*
+| WHERE service.name == "transfer-service" AND status.code == "Error"
+| KEEP @timestamp, trace.id, name, service.version, http.response.status_code
+| SORT @timestamp DESC
+| LIMIT 10
+```
+
+Query B, logs of one trace:
+
+```esql
+FROM logs-*.otel-*
+| WHERE trace.id == "<trace.id>" AND severity_text IS NOT NULL
+| KEEP @timestamp, service.name, severity_text, span.id, body.text
+| SORT @timestamp ASC
+```
+
+Query C, spans and logs of one trace (framework middleware spans left out):
+
+```esql
+FROM traces-*.otel-*, logs-*.otel-*
+| WHERE trace.id == "<trace.id>" AND (data_stream.type == "traces" OR severity_text IS NOT NULL)
+| WHERE NOT (data_stream.type == "traces" AND name LIKE "middleware*")
+| EVAL type = data_stream.type, event = COALESCE(body.text, name), duration_ms = duration / 1000000
+| KEEP @timestamp, type, service.name, severity_text, event, duration_ms, status.code
+| SORT @timestamp ASC
+```
+
+Query D, from a log message to its traces:
+
+```esql
+FROM logs-*.otel-*
+| WHERE body.text LIKE "Ledger contract mismatch*"
+| KEEP @timestamp, service.name, service.version, trace.id, span.id, body.text
+| SORT @timestamp DESC
+| LIMIT 10
+```
+
+Query E, error logs and the traces they belong to, by version:
+
+```esql
+FROM logs-*.otel-*
+| WHERE TO_LOWER(severity_text) == "error" AND trace.id IS NOT NULL
+| STATS error_logs = COUNT(*), traces = COUNT_DISTINCT(trace.id) BY service.name, service.version
+| SORT error_logs DESC
+```
+
+`severity_text IS NOT NULL` leaves out the exception events that also land in
+`logs-*.otel-*` (they have no severity); the APM error pages show those.
+Severity is upper case in Java (`ERROR`) and lower case in Node.js (`error`),
+hence `TO_LOWER` in query E.
 
 ### How log correlation works
 
